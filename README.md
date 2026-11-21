@@ -28,7 +28,9 @@ read their screen and conversation, and lets you answer them — from one browse
 - **Terminal menus** — a menu left open in the terminal (`/mcp`, `/permissions`, `/config`…) is shown in the page
   with a key pad (arrows, Enter, Tab, Space, Backspace, Esc) and a text field, so it can be driven from a phone.
 - **Start, fork, reopen, close** — new session in a folder or in a fresh git worktree, a fork of an existing
-  session, reopen a closed one, close the ones whose work is merged.
+  session, reopen a closed one, close the ones whose work is merged. A folder Claude Code has not trusted yet is
+  flagged in the form and refused: the session would otherwise sit, unseen, on the "Do you trust the files in this
+  folder?" question (see [Folder trust](#folder-trust)).
 - **Find** — full-text search across conversations, favourites, hide, tags.
 - **Attach files** — drag and drop, paste or pick a file; the session receives its path.
 - **From your phone** — read and answer over your own Tailscale network.
@@ -83,6 +85,22 @@ you would drive by hand.
 It relies on behaviour Claude Code does not document — the layout of `~/.claude`, the transcript format, what the
 terminal screen looks like. A Claude Code update can break it.
 
+### Folder trust
+
+The first time `claude` starts interactively in a folder, Claude Code asks "Do you trust the files in this folder?"
+— even with `--dangerously-skip-permissions`. Until someone answers in the terminal tab, the session writes no
+transcript and no session file, so the page cannot see it: it looks as if nothing was launched.
+
+The server reads (never writes) `projects[<folder>].hasTrustDialogAccepted` from Claude Code's `.claude.json`. The
+check is on the **exact** folder: a trusted parent folder does not cover a sub-folder that is itself a git
+repository, so no trust is inferred from a parent. Then:
+
+- the new-session form flags untrusted folders (⚠ in the list, and a warning under it);
+- launching in an untrusted folder is refused, with what to do: run `claude` once in that folder and accept;
+- with a new branch, the fresh worktree is never trusted in advance, so the launch is not refused — the form warns
+  that the tab will ask the question;
+- if `.claude.json` cannot be read, the status is unknown and nothing is refused.
+
 ## Configuration
 
 Everything specific to a machine lives in `~/.claude/sessions-desk/config.json` (another path: `--config <file>`
@@ -117,7 +135,7 @@ previous version is kept as `config.json.bak-page-<date>` (the 5 latest).
 | `ui.quota` | Weekly quota thresholds in %: `{ "warn": 75, "alert": 90 }` (orange, then red + launcher alert) |
 | `ui.shortcuts` | Buttons under the reply box that send a ready-made slash command in one click: `[{ "label": "Reconnect MCP", "command": "/mcp reconnect all", "confirm": "" }]`, 8 at most. Absent: two defaults (reconnect MCP servers, compact). Empty list: no button |
 | `delays` | `{ "notifyAfterSeconds": 15, "notifyDoneAfterMinutes": 3, "closedDays": 14 }` — the command-line options of the same role win |
-| `newSession.folders` | Folders always offered by the new-session form, even with no recent session there: `["~\\code\\my-repo"]`, 50 at most. Without it the form only offers folders where a session ran recently — and only offered folders can be launched in |
+| `newSession.folders` | Folders always offered by the new-session form, even with no recent session there: `["~\\code\\my-repo"]`, 50 at most. Without it the form only offers folders where a session ran recently — and only offered folders can be launched in. A folder must also be trusted in Claude Code (see [Folder trust](#folder-trust)) |
 | `tailscaleExe` | Path to `tailscale.exe` (`""` turns remote access off); default: the standard install folder |
 | `peers` | Your other machines whose sessions join this list: `["laptop"]` — see [Several machines](#several-machines) |
 | `ui.language` | `en` or `fr`: the page language on this machine (default: the browser's) |

@@ -3257,7 +3257,9 @@ function renderNew() {
   const cancel = el('button', null, draft ? T('Fermer', 'Close') : T('Annuler', 'Cancel')); cancel.onclick = () => closeNew();
   const acts = el('div', 'actions'); acts.append(go, save, cancel);
   if (draft) { const del = el('button', 'danger', T('Supprimer le brouillon', 'Delete the draft')); del.onclick = () => deleteDraft(); acts.append(del); }
-  f.append(el('label', null, T('Dossier', 'Folder')), cwd,
+  const trust = el('div', 'hint warn'); trust.id = 'nf-trust'; trust.hidden = true;
+  br.addEventListener('input', () => trustHint());
+  f.append(el('label', null, T('Dossier', 'Folder')), cwd, trust,
            el('div', 'hint', T('Dossiers où une session a tourné récemment, plus ceux déclarés (★) dans newSession.folders de ~/.claude/sessions-desk/config.json — un dossier absent s’y ajoute.', 'Folders where a session ran recently, plus those declared (★) in newSession.folders of ~/.claude/sessions-desk/config.json — add a missing folder there.')),
            el('label', null, T('Premier message', 'First message')), pr,
            el('div', 'hint', T('Envoyé tel quel à la session dès son démarrage. Vide : la session attend ta première demande.', 'Sent as is to the session as soon as it starts. Empty: the session waits for your first request.')),
@@ -3275,17 +3277,34 @@ function renderNew() {
     // Dossier déclaré (newSession.folders de config.json) sans session récente : ni date ni compte, juste « déclaré ».
     for (const d of r.folders || []) {
       const info = d.count ? T('   —   il y a ' + ago(Date.now() - d.last), '   —   ' + ago(Date.now() - d.last) + ' ago') + ' · ' + d.count + ' session' + (d.count > 1 ? 's' : '') : '   —   ' + T('déclaré', 'declared');
-      const o = el('option', null, (d.declared ? '★ ' : '') + (short(d.path) || d.path) + info); o.value = d.path;
-      o.title = d.path + (d.declared ? T('\nDéclaré dans config.json (newSession.folders)', '\nDeclared in config.json (newSession.folders)') : ''); cwd.append(o);
+      // Dossier non approuvé dans Claude Code (untrusted) : le serveur refuse d'y lancer sans branche neuve.
+      const warn = d.untrusted ? '   ·   ⚠ ' + T('non approuvé dans Claude Code', 'not trusted in Claude Code') : '';
+      const o = el('option', null, (d.declared ? '★ ' : '') + (short(d.path) || d.path) + info + warn); o.value = d.path;
+      if (d.untrusted) o.dataset.untrusted = '1';
+      o.title = d.path + (d.declared ? T('\nDéclaré dans config.json (newSession.folders)', '\nDeclared in config.json (newSession.folders)') : '') + (d.untrusted ? '\n' + untrustedHint() : ''); cwd.append(o);
     }
+    cwd.onchange = () => trustHint();
     if (!cwd.options.length) { cwd.append(el('option', null, T('aucun dossier récent trouvé', 'no recent folder found'))); return; }
     const from = draft && draft.cwd ? draft.cwd : fork && fork.cwd ? fork.cwd : '';
     const want = from ? from.replace(/\\+$/, '').toLowerCase() : null, same = want && [...cwd.options].find(o => o.value.toLowerCase() === want);
     if (same) cwd.value = same.value;
     else if (draft && draft.cwd) say(T('le dossier du brouillon n’est plus proposé (' + (short(draft.cwd) || draft.cwd) + ') : choisis-en un autre', 'the draft’s folder is no longer offered (' + (short(draft.cwd) || draft.cwd) + '): choose another one'));
     else if (last && [...cwd.options].some(o => o.value === last)) cwd.value = last;
-    cwd.disabled = false;
+    cwd.disabled = false; trustHint();
   }).catch(() => { cwd.replaceChildren(el('option', null, T('liste des dossiers indisponible', 'folder list unavailable'))); });
+}
+// Approbation des dossiers par Claude Code (/api/folders → untrusted ; serveur : trust.ts). Une session lancée dans un
+// dossier non approuvé attendrait, sans rien montrer ici, la question « Do you trust the files in this folder? ». Sans
+// branche, le serveur refuse ; avec une branche neuve, le worktree créé n'est jamais approuvé d'avance : on prévient
+// que l'onglet posera la question.
+function untrustedHint() { return T('⚠ Dossier non approuvé dans Claude Code : une session lancée ici resterait bloquée sur la question d’approbation, sans rien afficher sur cette page. Lance une fois « claude » dans ce dossier et accepte, ou choisis un dossier approuvé.', '⚠ Folder not trusted in Claude Code: a session started here would wait on the trust question, showing nothing on this page. Run “claude” once in this folder and accept, or choose a trusted folder.'); }
+function trustHint() {
+  const h = $('nf-trust'), cwd = $('nf-cwd'), br = $('nf-branch'); if (!h || !cwd) return;
+  const o = cwd.selectedOptions && cwd.selectedOptions[0];
+  const text = br && br.value.trim()
+    ? T('⚠ Branche neuve : Claude Code demandera d’approuver le worktree créé — réponds dans l’onglet, sinon la session reste bloquée sans apparaître ici.', '⚠ New branch: Claude Code will ask to trust the new worktree — answer in the tab, or the session stays stuck without showing up here.')
+    : o && o.dataset.untrusted ? untrustedHint() : '';
+  h.hidden = !text; h.textContent = text;
 }
 async function launchNew() {
   const cwd = $('nf-cwd'), pr = $('nf-prompt'), mo = $('nf-model'), br = $('nf-branch');
