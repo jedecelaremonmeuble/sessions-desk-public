@@ -39,6 +39,8 @@ export interface Config {
   ui: UiConfig;
   /** Vocabulaire des tags, à défaut de celui que publie l'étiqueteur (modules.ts, parseTagVocab). */
   tagVocab: TagVocab;
+  /** Dossiers toujours proposés (et acceptés) par « Nouvelle session » — `newSession.folders` de config.json. */
+  newFolders: string[];
   /** config.json illisible : le message (affiché par la page). */
   configError: string | null;
   /** Chemin du fichier de configuration lu (passé au surveillant Teams lancé par le serveur : SD_CONFIG). */
@@ -88,6 +90,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
     modules: settings.modules,
     ui: settings.ui,
     tagVocab: settings.tagVocab,
+    newFolders: settings.newFolders,
     configError: settings.error,
     configFile,
   };

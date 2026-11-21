@@ -125,6 +125,20 @@ export function loadVocab(tagsDir?: string, fallback: { domaines: string[]; outi
   return { domaines: [...fallback.domaines], outils: [...fallback.outils] };
 }
 
+/** Dossier proposé par « Nouvelle session » ; `declared` : écrit dans `newSession.folders` de config.json. */
+export interface NewFolder { path: string; last: number; count: number; declared?: true }
+/** Fusionne les dossiers récents et les dossiers déclarés : un déclaré déjà récent garde sa place (et sa date),
+ *  un déclaré sans session récente vient après les récents, dans l'ordre du fichier. Un dossier disparu n'est
+ *  jamais proposé. */
+export function withDeclaredFolders(recent: { path: string; last: number; count: number }[], declared: string[], exists: (p: string) => boolean): NewFolder[] {
+  const decl = new Set(declared.map((p) => p.toLowerCase()));
+  const out: NewFolder[] = recent.filter((e) => exists(e.path)).sort((a, b) => b.last - a.last)
+    .map((e) => ({ path: e.path, last: e.last, count: e.count, ...(decl.has(e.path.toLowerCase()) ? { declared: true as const } : {}) }));
+  const have = new Set(out.map((e) => e.path.toLowerCase()));
+  for (const p of declared) if (!have.has(p.toLowerCase()) && exists(p)) { have.add(p.toLowerCase()); out.push({ path: p, last: 0, count: 0, declared: true }); }
+  return out;
+}
+
 export class Dashboard {
   readonly cfg: Config;
   readonly driver: DriverClient;
@@ -657,8 +671,8 @@ export class Dashboard {
     return { days: this.cfg.closedDays, closed: list.slice(0, 400) };
   }
 
-  /** Get-NewFolders */
-  async newFolders(): Promise<{ path: string; last: number; count: number }[]> {
+  /** Get-NewFolders : dossiers récents (sessions ouvertes, puis fermées), plus les dossiers déclarés du poste. */
+  async newFolders(): Promise<NewFolder[]> {
     await this.closed();
     const by = new Map<string, { path: string; last: number; count: number }>();
     const add = (p: unknown, at: number): void => {
@@ -675,6 +689,6 @@ export class Dashboard {
       add(m.cwd, Math.trunc(f.mtime));
     }
     for (const s of await this.openSessions()) add(s.cwd, nowMs());
-    return [...by.values()].filter((e) => isDir(e.path)).sort((a, b) => b.last - a.last).map((e) => ({ path: e.path, last: e.last, count: e.count }));
+    return withDeclaredFolders([...by.values()], this.cfg.newFolders ?? [], isDir);
   }
 }
