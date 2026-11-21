@@ -123,20 +123,23 @@ function modelBadge(m, compact, extra) {
   return b;
 }
 // config.json illisible : tous les modules sont éteints — le dire en tête de la liste, avec la cause.
-// config.json lu mais pas conforme au schéma : les réglages ignorés, repliés sous une ligne (une faute de frappe ne se voit pas autrement).
-function cfgErr(msg, warnings) {
+// État du fichier de configuration, en tête de la liste : illisible (tout est éteint au démarrage, ou les réglages
+// d'avant sont gardés s'il l'est devenu en cours de route), modifié d'une façon qui attend un redémarrage, réglages ignorés.
+function cfgErr(msg, warnings, kept, restart) {
   const e = $('cfgerr'); if (!e) return;
   const w = Array.isArray(warnings) ? warnings.filter(x => typeof x === 'string') : [];
-  const key = (msg || '') + '
-' + w.join('
-'); if (e.dataset.k === key) return; e.dataset.k = key;
-  e.hidden = !msg && !w.length; e.classList.toggle('warn', !msg && w.length > 0); e.textContent = '';
-  if (msg) { e.textContent = T('⚠ Fichier de configuration illisible : tout est éteint (lanceur, Teams, quota, tags). Corriger puis redémarrer le serveur. — ', '⚠ Configuration file unreadable: everything is off (launcher, Teams, quota, tags). Fix it, then restart the server. — ') + msg; return; }
+  const r = Array.isArray(restart) ? restart.filter(x => typeof x === 'string') : [];
+  const key = [msg || '', kept ? 1 : 0, r.join(','), w.join('\n')].join('\n'); if (e.dataset.k === key) return; e.dataset.k = key;
+  e.hidden = !msg && !w.length && !r.length; e.classList.toggle('warn', !msg); e.textContent = '';
+  const line = (t) => { const d = document.createElement('div'); d.textContent = t; e.appendChild(d); };
+  if (msg && kept) line(T('⚠ Fichier de configuration illisible : les réglages d’avant restent en service. Corriger le fichier, il est relu tout seul. — ', '⚠ Configuration file unreadable: the previous settings stay in effect. Fix the file; it is read again on its own. — ') + msg);
+  else if (msg) { line(T('⚠ Fichier de configuration illisible : tout est éteint (lanceur, Teams, quota, tags). Corriger puis redémarrer le serveur. — ', '⚠ Configuration file unreadable: everything is off (launcher, Teams, quota, tags). Fix it, then restart the server. — ') + msg); return; }
+  if (r.length) line(T('↻ config.json modifié : redémarrer le serveur pour appliquer ', '↻ config.json changed: restart the server to apply ') + r.join(', '));
   if (!w.length) return;
-  const d = document.createElement('details'), s = document.createElement('summary'), ul = document.createElement('ul');
-  s.textContent = w.length === 1 ? T('⚠ config.json : 1 réglage ignoré', '⚠ config.json: 1 setting ignored') : T(`⚠ config.json : ${w.length} réglages ignorés`, `⚠ config.json: ${w.length} settings ignored`);
+  const d = document.createElement('details'), sm = document.createElement('summary'), ul = document.createElement('ul');
+  sm.textContent = w.length === 1 ? T('⚠ config.json : 1 réglage ignoré', '⚠ config.json: 1 setting ignored') : T(`⚠ config.json : ${w.length} réglages ignorés`, `⚠ config.json: ${w.length} settings ignored`);
   for (const x of w) { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); }
-  d.append(s, ul); e.appendChild(d);
+  d.append(sm, ul); e.appendChild(d);
 }
 const short = p => { const s = p || '', pre = ui().pathPrefix || ''; return (pre && s.toLowerCase().startsWith(pre.toLowerCase()) ? s.slice(pre.length).replace(/^[\\/]+/, '') : s) || s; };
 const norm = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -4061,7 +4064,7 @@ async function tick() {
     ticking = false; return;
   }
   try {
-    data = srv; skew = data.now ? Date.now() - data.now : 0; adoptPostLanguage(data.ui && data.ui.language); cfgErr(data.configError, data.configWarnings); favs = new Set(data.favs || []); hiddenSet = new Set(data.hidden || []); $('launchbtn').hidden = launcherOff(); chatsBadge();
+    data = srv; skew = data.now ? Date.now() - data.now : 0; adoptPostLanguage(data.ui && data.ui.language); cfgErr(data.configError, data.configWarnings, data.configErrorKept, data.configRestart); favs = new Set(data.favs || []); hiddenSet = new Set(data.hidden || []); $('launchbtn').hidden = launcherOff(); chatsBadge();
     if (linkUp(data.server)) return;
     renderList(); renderDetail(); refreshScreen(); refreshConv(); try { renderQuota(); } catch (e) { console.log('[sessions] quota :', e); }
     renderRelay(data.server && data.server.relay);

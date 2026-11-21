@@ -5,7 +5,7 @@
 // À côté du .ps1 (défaut, 8767 + relais 8768) : lecture seule, sans notification ni tâche de fond partagée.
 // Sur 8765 (bascule, étape 5, sur go) : rôle « primary », écriture permise.
 import { join } from 'node:path';
-import { parseArgs } from './config.ts';
+import { parseArgs, watchConfig } from './config.ts';
 import { DriverClient } from './driver.ts';
 import { Server } from './http.ts';
 import { Dashboard } from './state.ts';
@@ -37,7 +37,9 @@ export async function start(argv: string[]): Promise<Server> {
   if (!cfg.noBackground) srv.search.warm();
   // Fin du démarrage : le premier état calculé (la page attend /api/state, pas seulement le ping).
   void srv.firstState.then(() => { step('1er état'); const c = process.cpuUsage(); perfLine(perf, startupLine(steps, performance.now(), (c.user + c.system) / 1000)); });
-  srv.onStop = () => { void stall.stop(); driver.close(); process.exit(0); };
+  const unwatch = watchConfig(cfg, (line) => process.stdout.write(`${line}
+`));
+  srv.onStop = () => { unwatch(); void stall.stop(); driver.close(); process.exit(0); };
   for (const sig of ['SIGINT', 'SIGBREAK'] as const) process.once(sig, () => { void srv.shutdown(); });   // Ctrl+C / Ctrl+Pause : arrêt propre
   srv.loop().catch((e) => { srv.logError(`boucle : ${(e as Error).message}`); process.exit(1); });
   return srv;

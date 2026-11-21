@@ -94,6 +94,13 @@ your file and an editor such as VS Code completes and checks it while the server
 checks the file the server reads, or the one given after `--`. The server reads a setting it does not understand as
 absent, without turning off the rest; the page lists those settings above the session list.
 
+The server watches the file. A change to the display settings (`ui`), `delays`, `claudeArgs`, `newSession`,
+`modules.tickets` or `tagger` applies within a second, without a restart. A change to `modules.launcher`,
+`modules.teams`, `modules.quota`, `modules.automations`, `tailscaleExe` or `peers` waits for the next start, and the
+page says which. A file that becomes unreadable while the server runs leaves the previous settings in effect. A
+command-line option (`--claude-args`, `--closed-days`…) keeps precedence over the file. The tagger and the Teams
+watcher read the file again at each pass.
+
 | Key | Purpose |
 |---|---|
 | `ui.pathPrefix` | Folder prefix not repeated in the list (for instance your main repository) |
