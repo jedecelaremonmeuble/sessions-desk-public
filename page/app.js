@@ -1712,6 +1712,13 @@ function runOrders(phase, stage, pr) {
   if (['diagnostic', 'suite', 'relance', 'reveil'].includes(phase)) o.push('verdict');
   return o;
 }
+// « Abandonner le sujet » (PURE) : proposé tant qu'aucun correctif n'est en route ni livré — l'étape est celle de la
+// DEMANDE (stages.json), pas du run affiché. Filtre de lisibilité : le lanceur refait ses gardes.
+function canAbandon(stage) {
+  return !['diagnosing', 'dev-queued', 'dev-running', 'pr-review', 'pr-awaiting-approval', 'delivering', 'deploying', 'deploy-failed', 'deploy-unknown',
+    'in-production', 'rollback-requested', 'reverting'].includes(stage);
+}
+const abandonedOf = hd => ((runData && runData.abandoned) || []).find(x => String(x.hd) === String(hd)) || null;
 // Livraison en cours (étape `delivering`) : ce que le bloc « Piloter » dit À LA PLACE des boutons de livraison. PURE.
 // since = moment où le lanceur a enregistré la demande ; mergeAt = début de son run de livraison, s'il a démarré.
 function deliveringWait(it) { const w = ((it.runs || []).find(x => x.wait) || {}).wait; return w && w.stage === 'delivering' ? w : null; }
@@ -1924,6 +1931,7 @@ async function sendCard(it, card) {
   orderUi.result = res; renderOrders(it); setTimeout(loadRuns, 3000);
 }
 const ORDER_FR = { go:T('▶ Feu vert (go)', '▶ Go-ahead (go)'), merge:T('🚀 Livrer la PR', '🚀 Ship the PR'), review:T('🔎 Relire la PR', '🔎 Review the PR'), 'recette-skip':T('⏭ Sauter la recette', '⏭ Skip testing'), rework:T('🔁 Reprendre la PR', '🔁 Rework the PR'),
+  abandon:T('🗑️ Abandonner le sujet', '🗑️ Drop the subject'),
   adopt:T('🔎 Relire les commits ajoutés, puis livrer', '🔎 Review the added commits, then ship'), retry:T('↻ Relancer la livraison', '↻ Restart the delivery'), session:T('🧑‍💻 Reprendre en session', '🧑‍💻 Resume in a session') };
 // Livraison refusée (lot 1 des livraisons refusées) : la NATURE du refus, publiée par le
 // lanceur (stages.json → waiting.refusalKind), remplace « Livrer la PR » par la suite qui a un sens. Commits ajoutés après
@@ -1974,12 +1982,21 @@ function renderOrders(it) {
     box.append(note);
   }
   if (r.running) return;
+  // Sujet abandonné : la demande est close — on le dit, et plus aucun ordre n'est proposé.
+  const gone = abandonedOf(hd);
+  if (gone) {
+    const when = gone.at ? new Date(gone.at).toLocaleString(LOCALE, { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+    box.append(el('h2', null, T('Piloter HD-' + hd, 'Control HD-' + hd)),
+      el('div', 'banner', T('🗑️ Sujet abandonné' + (when ? ' le ' + when : '') + ' — demande close, demandeur prévenu : « ', '🗑️ Subject dropped' + (when ? ' on ' + when : '') + ' — request closed, requester told: "') + (gone.motive || '') + T(' »', '"')));
+    return;
+  }
   // Cartes de questions (jeton rangé) : elles portent AUSSI la décision ✅ — l'ancien formulaire ne sert plus que sans elles.
   const cards = cardsFor(hd);
   if (cards.length) refreshCards(it, hd);
   const dec = cardsOn() ? null : decisionOf(hd);
   // Une décision en attente remplace le go nu : « Lancer » de la carte part avec ses choix et laisse la trace.
   const list = deliveryOrders(runOrders(r.phase, stage, pr).filter(o => !((dec || cards.some(c => c.kind === 'validation') || goHeldFor(goHeld, hd, headDirOf(it))) && o === 'go')), wait ? wait.refusalKind : null);
+  if (canAbandon(r.stage)) list.push('abandon');
   const noToken = !!(runData && runData.cardsToken === 'absent' && (r.files || []).some(f => f.name === 'questions.json'));
   if (!list.length && !dec && !cards.length && !noToken) return;
   box.append(el('h2', null, T('Piloter HD-' + hd, 'Control HD-' + hd)));
@@ -1997,7 +2014,7 @@ function renderOrders(it) {
     b.onclick = () => o === 'session' ? openNew(null, { title: 'Reprendre la livraison de HD-' + hd + (pr ? ' (PR #' + pr + ')' : ''),
         prompt: resumePrompt(hd, pr || '?', it.wait && it.wait.refusalKind, it.wait && it.wait.detail), tags: [{ axis: 'fonction', v: 'livraison-refusee' }] })
       : o === 'adopt' ? toggleAdopt(it)
-      : (o === 'go' || o === 'merge' || o === 'retry') ? (orderUi.open = orderUi.open === o ? null : o, renderOrders(it)) : sendOrder(it, { order: o });
+      : (o === 'go' || o === 'merge' || o === 'retry' || o === 'abandon') ? (orderUi.open = orderUi.open === o ? null : o, renderOrders(it)) : sendOrder(it, { order: o });
     row.append(b);
   }
   box.append(row);
@@ -2013,6 +2030,20 @@ function renderOrders(it) {
     const cancel = el('button', null, T('Annuler', 'Cancel')); cancel.onclick = () => { orderUi.open = null; renderOrders(it); };
     const a = el('div', 'actions'); a.append(go, cancel);
     f.append(ta, a, el('div', 'hint', v ? T('Ordre « verdict ' + hd + ' ' + v + ' » — noté à la prochaine passe.', 'Order "verdict ' + hd + ' ' + v + '" — recorded on the next pass.') : T('Ordre « go ' + hd + ' » — correctif en file, toujours en PR à relire (jamais de merge automatique).', 'Order "go ' + hd + '" — fix queued, always as a PR to review (never an automatic merge).')));
+    box.append(f);
+  } else if (open === 'abandon') {
+    // Le mot est obligatoire : il prévient le demandeur (mention dans la note) et sert de motif à l'abandon.
+    const f = el('div', 'orderform confirm');
+    f.append(el('div', null, T('🗑️ Abandonner HD-' + hd + ' : le sujet n’a plus d’intérêt. Le demandeur est prévenu par ton mot, les questions encore ouvertes sont fermées et la demande est close « Abandonné ».',
+      '🗑️ Drop HD-' + hd + ': the subject is no longer worth pursuing. The requester is told with your note, the questions still open are closed and the request is closed as "Dropped".')));
+    const ta = el('textarea'); ta.value = orderUi.text; ta.maxLength = 2000; ta.rows = 3;
+    ta.placeholder = T('Mot pour le demandeur (obligatoire) — ex. « Le réglage a été corrigé à la main entre-temps, il n’y a plus rien à faire. »', 'Note to the requester (required) — e.g. "The setting was fixed by hand in the meantime, nothing is left to do."');
+    const ok = el('button', 'primary', T('Abandonner et prévenir le demandeur', 'Drop and tell the requester')); ok.disabled = orderUi.busy || !orderUi.text.trim();
+    ta.oninput = () => { orderUi.text = ta.value; ok.disabled = orderUi.busy || !ta.value.trim(); };
+    ok.onclick = () => sendOrder(it, { order: 'abandon', text: orderUi.text });
+    const cancel = el('button', null, T('Annuler', 'Cancel')); cancel.onclick = () => { orderUi.open = null; renderOrders(it); };
+    const a = el('div', 'actions'); a.append(ok, cancel);
+    f.append(ta, a, el('div', 'hint', T('Ordre « abandon ' + hd + ' » — le mot part tel quel : le lanceur le pose en note sur la demande et mentionne le demandeur.', 'Order "abandon ' + hd + '" — the note is sent as is: the launcher posts it on the request and mentions the requester.')));
     box.append(f);
   } else if (open === 'adopt') {
     box.append(adoptForm(it, hd, pr));

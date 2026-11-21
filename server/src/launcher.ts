@@ -61,7 +61,8 @@ const WAIT_FR: Record<string, string> = { 'pr-awaiting-approval': 'PR à valider
 
 /** Ordres au lanceur depuis le détail d'un run — Get-LauncherOrderArgs du .ps1, à l'identique. La page ne
  *  fait que TAPER la commande du lanceur ; la commande refait ses gardes, dépose l'ordre et le relève. Texte libre
- *  derrière « -- » (jamais lu comme une option) ; merge seulement avec confirm === true. null = demande invalide. */
+ *  derrière « -- » (jamais lu comme une option) ; merge seulement avec confirm === true ; abandon seulement avec son
+ *  mot pour le demandeur. null = demande invalide. */
 export function orderArgs(j: unknown): string[] | null {
   if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
   const o = j as Obj;
@@ -77,6 +78,8 @@ export function orderArgs(j: unknown): string[] | null {
       a = adopt ? ['merge', hd, '--adopt-head', adopt] : ['merge', hd];
       break;
     }
+    // Sujet sans intérêt : jamais sans le mot qui prévient le demandeur (c'est aussi le motif de l'abandon).
+    case 'abandon': a = text ? ['abandon', hd, '--', text] : null; break;
     case 'review': a = ['review', hd]; break;
     case 'rework': a = ['rework', hd]; break;
     case 'recette-skip': a = ['recette', 'skip', hd]; break;
@@ -309,13 +312,19 @@ export class Launcher {
         questionsJson: JSON.stringify(Array.isArray(d.questions) ? d.questions : [d.questions]) });
     }
     decisions.sort((a, b) => (b.since as number) - (a.since as number));
+    // Sujets abandonnés (ordre « abandon ») : la page le dit dans le détail du run et n'y propose plus d'ordre.
+    const abandoned: Obj[] = [];
+    for (const [name, rec] of Object.entries(((st?.requests ?? {}) as Obj))) {
+      const a = (rec as Obj | null)?.abandoned as Obj | undefined;
+      if (a && typeof a === 'object') abandoned.push({ hd: name, at: launchMs(a.at), motive: psString(a.motive).slice(0, 2000) });
+    }
     const errors: Obj[] = [];
     for (const k of ['lastPassError', 'lastWait', 'lastPageError', 'lastRerunError', 'lastWakeError', 'lastReactionError']) {
       const e = st?.[k] as Obj | undefined;
       if (e && e.message) errors.push({ kind: k, message: psString(e.message), at: roundHalfEven(Number(e.at ?? 0) * 1000) });
     }
     errors.sort((a, b) => (b.at as number) - (a.at as number));
-    const v: Obj = { present: true, now, hours, heartbeat: this.#heartbeat(), quota: readClaudeUsage(this.d.cfg), errors, runs, waiting, decisions,
+    const v: Obj = { present: true, now, hours, heartbeat: this.#heartbeat(), quota: readClaudeUsage(this.d.cfg), errors, runs, waiting, decisions, abandoned,
       cards: Array.isArray(feed.cards) ? feed.cards : [], cardsToken: psString(feed.token) || 'unknown', cardsError: feed.error ?? null,
       cost: roundHalfEven(runs.reduce((t, r) => t + (Number(r.costUsd ?? 0) || 0), 0), 2),
       triage: st?.triage ?? null, devMode: st?.devMode ?? null, recetteMode: st?.recetteMode ?? null, reworkMode: st?.reworkMode ?? null };
