@@ -2131,6 +2131,39 @@ function machineTag(it) {
   t.onclick = e => { e.stopPropagation(); const q = $('q'), tok = 'poste:' + it.machine; q.value = norm(q.value).split(/\s+/).includes(tok) ? q.value.split(/\s+/).filter(x => norm(x) !== tok).join(' ') : (q.value.trim() + ' ' + tok).trim(); renderList(); };
   return t;
 }
+// La liste se reconstruit à chaque rendu (toutes les 1 à 2 s). Remplacer ses nœuds perdait des clics : appui sur un
+// en-tête de groupe, rendu, relâché sur le nouvel en-tête — le navigateur n'envoie pas de click (appui et relâché sur
+// deux nœuds différents), le groupe ne se repliait pas. On construit hors du document puis on REPORTE sur les nœuds en
+// place : un nœud de même clé (data-key : ligne ou en-tête de groupe) ou, sans clé, de même balise au même rang est
+// gardé et mis à jour (attributs, texte, gestionnaires on…). Bonus : l'ancrage du défilement du navigateur marche
+// (les nœuds restent), une ligne qui grandit au-dessus ne fait plus sauter ce qu'on lit.
+const MORPH_HANDLERS = ['onclick', 'ondblclick', 'onmousedown', 'onmouseup', 'onpointerdown', 'onchange', 'oninput', 'onkeydown'];
+function morphChildren(cur, next) {
+  const keyOf = n => n.nodeType === 1 && n.dataset && n.dataset.key || '';
+  const same = (o, n) => o.nodeType === n.nodeType && (o.nodeType !== 1 || o.tagName === n.tagName);
+  // Un nœud n'est DÉPLACÉ que si l'ordre change vraiment : un déplacement retire le nœud du document, et un clic
+  // commencé dessus est perdu comme avant. D'abord, retirer ce qui ne servira pas (clé absente du nouveau rendu, clé
+  // en double : la même session peut figurer deux fois), sinon ce nœud resterait en travers et TOUS les suivants
+  // seraient déplacés devant lui, à chaque rendu.
+  const want = new Set([...next.childNodes].map(keyOf).filter(Boolean)), keyed = new Map();
+  for (const c of [...cur.childNodes]) { const k = keyOf(c); if (!k) continue; if (want.has(k) && !keyed.has(k)) keyed.set(k, c); else c.remove(); }
+  let at = cur.firstChild;
+  for (const n of [...next.childNodes]) {
+    const k = keyOf(n);
+    if (k) while (at && !keyOf(at)) { const nx = at.nextSibling; at.remove(); at = nx; }   // nœud sans clé à la place d'une ligne : périmé
+    let o = k ? keyed.get(k) : at && !keyOf(at) && same(at, n) ? at : null;
+    if (k) keyed.delete(k);
+    if (!o || !same(o, n)) { cur.insertBefore(n, at); continue; }
+    if (o === at) at = at.nextSibling; else cur.insertBefore(o, at);
+    if (o.nodeType !== 1) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; continue; }
+    for (const x of [...o.attributes]) if (!n.hasAttribute(x.name)) o.removeAttribute(x.name);
+    for (const x of n.attributes) if (o.getAttribute(x.name) !== x.value) o.setAttribute(x.name, x.value);
+    for (const h of MORPH_HANDLERS) if (o[h] !== n[h]) o[h] = n[h];
+    if ('checked' in n && o.checked !== n.checked) o.checked = n.checked;
+    morphChildren(o, n);
+  }
+  while (at) { const nx = at.nextSibling; at.remove(); at = nx; }
+}
 function renderList() {
   spinPhase();
   const tokens = norm($('q').value).split(/\s+/).filter(Boolean);
@@ -2140,7 +2173,7 @@ function renderList() {
   $('sortbtn').className = sortMode === 'created' ? 'on' : '';
   $('sortbtn').title = sortMode === 'created' ? T('Trié par date de création (la plus récente d’abord) — clic : par dernière activité', 'Sorted by creation date (newest first) — click: by last activity') : T('Trié par dernière activité — clic : par date de création', 'Sorted by last activity — click: by creation date');
   const expandAll = tokens.length || favOnly;     // recherche ou filtre favoris : on cherche aussi dans les groupes repliés
-  const list = $('list'); list.replaceChildren(); flat = [];
+  const list = el('div'); flat = [];   // construite hors du document, reportée sur #list à la fin (morphChildren)
   if (data.reboot) {               // après un redémarrage de Windows : rappel en tête, la vue d'ensemble propose la réouverture
     const b = el('div', 'rbanner', T('↻ ' + plural(data.reboot.sessions.length, 'session ouverte', 'sessions ouvertes') + ' avant le redémarrage — rouvrir…', '↻ ' + plural(data.reboot.sessions.length, 'session open', 'sessions open') + ' before the restart — reopen…'));
     b.title = T('Afficher la liste dans la vue d\'ensemble', 'Show the list in the overview'); b.onclick = () => select(null); list.append(b);
@@ -2157,6 +2190,7 @@ function renderList() {
     const isCollapsed = !expandAll && collapsed.has('drafts');
     const head = el('div', 'grp');
     head.append(el('span', 'car', isCollapsed ? '▸' : '▾'), el('span', null, T('📝 Brouillons', '📝 Drafts')), el('span', 'n', drafts.length));
+    head.dataset.key = 'g:drafts';
     head.title = T('Nouvelles sessions enregistrées sans être lancées — clic sur une ligne : la relire, la modifier, la lancer', 'New sessions saved without being launched — click a row: read it, edit it, launch it');
     head.onclick = () => { collapsed.has('drafts') ? collapsed.delete('drafts') : collapsed.add('drafts'); localStorage.setItem('cc.collapsed', JSON.stringify([...collapsed])); renderList(); };
     list.append(head);
@@ -2177,6 +2211,7 @@ function renderList() {
       const isCollapsed = collapsed.has('recent');
       const head = el('div', 'grp');
       head.append(el('span', 'car', isCollapsed ? '▸' : '▾'), el('span', null, T('Consultées récemment', 'Recently viewed')), el('span', 'n', rec.length));
+      head.dataset.key = 'g:recent';
       head.title = T('Les dernières sessions ouvertes dans cette page  ( b : revenir à la précédente )', 'The last sessions opened in this page  ( b: back to the previous one )');
       head.onclick = () => { collapsed.has('recent') ? collapsed.delete('recent') : collapsed.add('recent'); localStorage.setItem('cc.collapsed', JSON.stringify([...collapsed])); renderList(); };
       list.append(head);
@@ -2203,7 +2238,7 @@ function renderList() {
     const isCollapsed = !expandAll && collapsed.has(g.key);
     // 🤖 replié : on garde sous les yeux ce qui compte — en cours, en échec, PR qui attend l'utilisateur.
     const urgent = g.key === 'auto' ? rows.filter(it => live(it) || it.look === 'waiting' || it.look === 'ask') : g.auto ? rows.filter(it => live(it) || it.look === 'waiting') : [];
-    const head = el('div', 'grp');
+    const head = el('div', 'grp'); head.dataset.key = 'g:' + g.key;
     const gTitle = g.key === 'auto' ? autoTitle(g.title, rows) : g.auto ? g.title + (autoGroupTitle(g.auto) ? ' — ' + autoGroupTitle(g.auto) : '') : g.title;
     head.append(el('span', 'car', isCollapsed ? '▸' : '▾'), el('span', null, gTitle + (g.key === 'closed' && closedData.days ? T(' · ' + closedData.days + ' j', ' · ' + closedData.days + ' d') : '')), el('span', 'n', rows.length));
     if (g.auto) head.title = T('Passes du jour qui ont agi ou échoué, et la passe en cours. Les passes sans effet sont comptées ici sans ligne. Replié : seulement en cours et en échec.', "Today's passes that acted or failed, and the running pass. Passes with no effect are counted here without a row. Collapsed: only running and failed.") + (g.auto.last ? T('\nDernière passe : ', '\nLast pass: ') + g.auto.last.summary : '');
@@ -2274,6 +2309,7 @@ function renderList() {
     }
   }
   if (!flat.length && expandAll) list.append(el('div', 'grp', favOnly && !tokens.length ? T('Aucun favori — touche f sur une session', 'No favourites — press f on a session') : T('Aucun résultat', 'No results')));
+  morphChildren($('list'), list);
   const unread = data.notifs.filter(nf => nf.at > Number(localStorage.getItem('cc.notifSeen') || 0)).length; $('belln').textContent = unread ? unread : '';
   const todo = allItems().filter(it => TODO.includes(it.state)).length;
   document.title = (todo ? '(' + todo + ') ' : '') + T('Sessions Claude Code', 'Claude Code sessions');
