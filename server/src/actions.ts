@@ -11,6 +11,7 @@ import { checkTag, type Dashboard, type Session } from './state.ts';
 import { addContent, GUID, ieq, isDir, netTrim, nowMs, psArray, psIntZero, psString, sleep } from './util.ts';
 import { T } from './i18n.ts';
 import { commandOf, Commands } from './commands.ts';
+import { UNTRUSTED_REFUSED } from './trust.ts';
 
 const KEY_NAMES = ['Enter', 'Esc', 'Up', 'Down', 'Left', 'Right', 'Tab', 'ShiftTab', 'Space', 'Backspace'];
 const NOT_EMPTY = "l'invite de la session n'est pas vide (brouillon, menu ou dialogue ouvert)";
@@ -473,6 +474,11 @@ export class Actions {
         + `Set-Location -LiteralPath ${q(join(wt, rel))}; `;
       startDir = top;
     }
+    // Dossier non approuvé par Claude Code : la session resterait bloquée en silence sur la question d'approbation
+    // (trust.ts). Seul « non approuvé » refuse ; un statut inconnu (configuration illisible) laisse lancer. Un worktree
+    // neuf (branche demandée) n'est jamais approuvé d'avance : l'onglet posera la question et la page le dit (app.js,
+    // trustHint) — refuser rendrait les branches neuves inutilisables.
+    if (!branch && this.d.trusted?.(dir.path) === false) { const [fr, en] = UNTRUSTED_REFUSED(dir.path); return T(fr, en); }
     if (startDir.includes(';')) return semicolonRefused();
     let cmd =`claude ${this.d.cfg.claudeArgs}`;
     if (model) cmd += ` --model ${model}`;

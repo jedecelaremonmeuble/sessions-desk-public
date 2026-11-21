@@ -17,6 +17,7 @@ import { isProbeCwd } from './usage-probe.ts';
 import { AskJudge, claudeAskAsync } from './asks-judge.ts';
 import { T } from './i18n.ts';
 import { Drafts } from './drafts.ts';
+import { claudeJsonPath, TrustReader } from './trust.ts';
 import {
   addContent, GUID, ieq, imatch, isDir, isFile, leaf, mtimeMs, netTrim, nowMs, parent, psString, readJson, readTail,
   setContent, setContentAtomic, splitPathParent, transcriptCreatedAt,
@@ -126,7 +127,7 @@ export function loadVocab(tagsDir?: string, fallback: { domaines: string[]; outi
 }
 
 /** Dossier proposé par « Nouvelle session » ; `declared` : écrit dans `newSession.folders` de config.json. */
-export interface NewFolder { path: string; last: number; count: number; declared?: true }
+export interface NewFolder { path: string; last: number; count: number; declared?: true; untrusted?: true }
 /** Fusionne les dossiers récents et les dossiers déclarés : un déclaré déjà récent garde sa place (et sa date),
  *  un déclaré sans session récente vient après les récents, dans l'ordre du fichier. Un dossier disparu n'est
  *  jamais proposé. */
@@ -168,6 +169,8 @@ export class Dashboard {
   /** Brouillons de nouvelle session (drafts.ts) : enregistrés sans être lancés. */
   readonly drafts: Drafts;
   #stamps = new Map<string, number>();
+  /** Approbation des dossiers par Claude Code (trust.ts) : lue, jamais écrite. */
+  readonly #trust: TrustReader;
 
   constructor(cfg: Config, driver: DriverClient) {
     this.cfg = cfg;
@@ -177,6 +180,7 @@ export class Dashboard {
     this.reloadSeen(true); this.reloadFavs(true); this.reloadHidden(true); this.reloadTagsManual(true);
     this.notifs = this.readNotifsFile();
     this.drafts = new Drafts(this.sf('sessions-new-drafts.json'));
+    this.#trust = new TrustReader(() => claudeJsonPath(cfg.claude, (f) => mtimeMs(f) > 0));
     this.initReboot();
     if (cfg.allowWrite && !cfg.noBackground && process.env.SD_ASK_JUDGE !== '0')
       this.askJudge = new AskJudge(this.sf('sessions-ask-verdicts.json'), claudeAskAsync(process.env.SD_CLAUDE_EXE ?? 'claude', process.env.SD_ASK_MODEL ?? 'claude-haiku-5-5'));
@@ -689,6 +693,10 @@ export class Dashboard {
       add(m.cwd, Math.trunc(f.mtime));
     }
     for (const s of await this.openSessions()) add(s.cwd, nowMs());
-    return withDeclaredFolders([...by.values()], this.cfg.newFolders ?? [], isDir);
+    return withDeclaredFolders([...by.values()], this.cfg.newFolders ?? [], isDir)
+      .map((f) => (this.trusted(f.path) === false ? { ...f, untrusted: true as const } : f));
   }
+
+  /** Le dossier est-il approuvé par Claude Code (lui ou un parent) ? null : configuration de Claude Code illisible. */
+  trusted(path: string): boolean | null { return this.#trust.trusted(path); }
 }
