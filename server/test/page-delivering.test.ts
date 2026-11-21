@@ -30,6 +30,11 @@ describe('étape delivering', () => {
     expect(fns.runOrders('go', 'dev-abandoned', null)).toEqual(['go']);
     expect(fns.runOrders('diagnostic', null, null)).toEqual(['go', 'verdict']);
   });
+  test('canAbandon : proposé tant qu’aucun correctif n’est en route ni livré', () => {
+    const canAbandon = new Function(grab('canAbandon') + '\nreturn canAbandon;')() as (stage: string | null) => boolean;
+    for (const stage of [null, 'diagnosis-held', 'diagnosis-skipped', 'diagnosis-failed', 'dev-abandoned', 'dev-failed', 'pr-closed']) expect(canAbandon(stage)).toBe(true);
+    for (const stage of ['diagnosing', 'dev-queued', 'dev-running', 'pr-review', 'pr-awaiting-approval', 'delivering', 'deploying', 'in-production', 'reverting']) expect(canAbandon(stage)).toBe(false);
+  });
   test('goHeldFor : pas de go tant que le dernier run est celui de la carte répondue', () => {
     const goHeldFor = new Function(grab('goHeldFor') + '\nreturn goHeldFor;')() as (h: Map<string, string>, hd: unknown, d: string | null) => boolean;
     const held = new Map([['111111', 'run-diag']]);

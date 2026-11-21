@@ -33,6 +33,11 @@ describe('orderArgs : la commande tapée pour chaque ordre', () => {
     for (const j of [{ hd: '42', order: 'decide' }, { hd: '42', order: 'decide', value: 'GO' }, { hd: '42', order: 'decide', value: '--x' },
       { hd: '42', order: 'decide', value: 'go', choices: { 'a=b': 'c' } }, { hd: '42', order: 'decide', value: 'go', choices: { a: '--dry-run' } }]) expect(orderArgs(j)).toBeNull();
   });
+  test('abandon : jamais sans le mot pour le demandeur, passé derrière « -- »', () => {
+    expect(orderArgs({ hd: '111111', order: 'abandon', text: '  corrigé à la main,\r\n plus rien à faire ' })).toEqual(['abandon', '111111', '--', 'corrigé à la main, plus rien à faire']);
+    expect(orderArgs({ hd: '111111', order: 'abandon', text: '--dry-run' })).toEqual(['abandon', '111111', '--', '--dry-run']);
+    for (const j of [{ hd: '111111', order: 'abandon' }, { hd: '111111', order: 'abandon', text: ' \n ' }, { hd: '111111', order: 'abandon', text: 'x'.repeat(2001) }]) expect(orderArgs(j)).toBeNull();
+  });
   test('demande invalide : numéro, ordre inconnu ou en majuscules, texte trop long, corps non objet', () => {
     for (const j of [{ hd: '0', order: 'go' }, { hd: '12a', order: 'go' }, { hd: '../1', order: 'go' }, { hd: '1234567890', order: 'go' }, { hd: '1', order: 'GO' },
       { hd: '1', order: 'pause' }, { hd: '1', order: 'go', text: 'x'.repeat(2001) }, null, [1], 'go']) expect(orderArgs(j)).toBeNull();
