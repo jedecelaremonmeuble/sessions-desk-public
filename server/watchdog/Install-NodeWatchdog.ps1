@@ -130,7 +130,7 @@ function Restore-PreviousCopy {
     Move-Item $runDir $failed
     Move-Item $prev $runDir
     $null = Enable-ScheduledTask -TaskName $taskName
-    Set-Content $marker "retour $name"
+    Set-Content $marker "$name (retour arrière)"
     Start-ScheduledTask -TaskName $taskName
     $ok = Wait-Server 60
     $took = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
