@@ -163,7 +163,7 @@ const lastLine = r => { const l = (r || '').split('\n').map(x => x.trim()).filte
 const TODO = ['waiting', 'ask', 'done'];
 
 // ── Quota des comptes Claude ──
-// Relevé par le collecteur du lanceur toutes les 5 min (data.quota, dates en ms). Fonction pure (pas de test dans ce dépôt) :
+// Relevé par le collecteur du lanceur toutes les 5 min (data.quota, dates en ms). Fonction pure (testée : server/test/page-pure.test.ts) :
 // % de la semaine, part de la semaine écoulée, écart au rythme régulier, budget par jour
 // jusqu'à la remise, rythme récent (déduit de la projection du collecteur, faite sur les 30 dernières heures).
 const WEEK = 7 * 864e5, DAY = 864e5;
@@ -463,7 +463,7 @@ function validationLine(i, now) {
 const validationsOf = it => (data && data.teams && data.teams.validations && it.sessionId && data.teams.validations[it.sessionId]) || null;
 
 // Réponses Teams attendues (teams-watcher.ts) : une ligne par
-// attente. Pure et autonome (pas de test dans ce dépôt).
+// attente. Pure et autonome (testée : server/test/page-pure.test.ts).
 function teamsWaitLine(w, now, remindersOn) {
   const d = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? m + ' min' : m < 2880 ? Math.floor(m / 60) + ' h' : Math.floor(m / 1440) + T(' j', ' d'); };
   const day = t => new Date(t).toLocaleDateString(LOCALE, { timeZone: 'Europe/Paris' });
@@ -491,7 +491,7 @@ async function teamsWaitAction(it, w, action) {
 }
 // Rangée dans « ⏳ Attente Teams » : session terminée-à-relire, inactive ou fermée qui a au moins une attente OUVERTE
 // (pas encore de réponse). Une réponse arrivée (replied), une session au travail, bloquée ou qui attend ta décision
-// restent dans leur groupe : il y a quelque chose à voir. Pure (pas de test dans ce dépôt).
+// restent dans leur groupe : il y a quelque chose à voir. Pure (testée : server/test/page-pure.test.ts).
 function teamsHeld(state, waits) {
   return ['done', 'idle', 'closed'].includes(state) && (waits || []).some(w => w.status === 'open');
 }
@@ -1095,7 +1095,7 @@ function renderLauncher() {
 // ── Runs du lanceur DANS LA LISTE (groupe 🤖) : une ligne par DEMANDE (runsByHd, plus bas) regroupant ses runs du jour (depuis minuit) et tout run en cours, avec le
 // détail d'une session manuelle (conversation, fichiers, coût, PR). Lecture seule. Source : /api/launcher?hours=24, relu
 // toutes les 30 s page visible (le serveur garde 15 s en cache) — aucune route nouvelle.
-// launcherGroup est PURE (pas de test dans ce dépôt) : runs → éléments de liste ; la session headless
+// launcherGroup est PURE (testée : server/test/page-pure.test.ts) : runs → éléments de liste ; la session headless
 // d'un run en cours (même pid, ou même sessionId) est ABSORBÉE par lui — elle ne figure plus seule dans la liste.
 // Étapes scriptées (go, merge, production, doc : pas de claude -p) : ligne sans conversation.
 // Couleur (look) : en cours = busy · échec = waiting · PR qui attend la validation de l'utilisateur = ask · réussi = done.
@@ -1129,7 +1129,7 @@ function launcherGroup(runs, waiting, open, since) {
   return { items, absorbed };
 }
 // Une ligne par DEMANDE, pas par run : un HD qui passe diagnostic → dev → relecture → recette → merge faisait 5 lignes.
-// runsByHd est PURE (pas de test dans ce dépôt) : éléments de launcherGroup → un élément par HD, qui
+// runsByHd est PURE (testée : server/test/page-pure.test.ts) : éléments de launcherGroup → un élément par HD, qui
 // REPREND le run en cours s'il y en a un, sinon le plus récent (titre, couleur, PR, conversation), et porte la liste de
 // ses runs (du plus récent au plus ancien), leur enchaînement de phases et leur coût cumulé. Clé stable `hd:<n>` : la
 // sélection survit au run suivant de la même demande.
@@ -1635,7 +1635,7 @@ function renderRunDetail(it, force) {
 }
 // La DEMANDE derrière un run (en-tête du détail) : demandeur, date, type, statut, assigné, client, liens Teams et
 // de tickets, début de la description — lue par GET /api/launcher/hd (commande de lecture des tickets du lanceur), gardée
-// ici par HD (l'en-tête se redessine toutes les 2 s ; le serveur garde 5 min). hdParts est PURE (pas de test dans ce dépôt).
+// ici par HD (l'en-tête se redessine toutes les 2 s ; le serveur garde 5 min). hdParts est PURE (testée : server/test/page-pure.test.ts).
 const HD_STATUS_FR = { New:T('Nouveau', 'New'), Open:T('Ouvert', 'Open'), InProgress:T('En cours', 'In progress'), Pending:T('En attente', 'Pending'), Waiting:T('En attente', 'Waiting'), Resolved:T('Résolu', 'Resolved'), Closed:T('Fermé', 'Closed') };
 const HD_KIND_FR = { Bug:'🐞 Bug', Idee:T('💡 Idée', '💡 Idea') };
 const HD_PRIO_FR = { Low:T('basse', 'low'), Medium:T('moyenne', 'medium'), High:T('haute', 'high'), Urgent:T('urgente', 'urgent') };
@@ -1936,14 +1936,14 @@ const ORDER_FR = { go:T('▶ Feu vert (go)', '▶ Go-ahead (go)'), merge:T('🚀
 // lanceur (stages.json → waiting.refusalKind), remplace « Livrer la PR » par la suite qui a un sens. Commits ajoutés après
 // les contrôles ⇒ les relire ici, puis livrer CE sha (merge --adopt-head) ; panne technique ⇒ relancer. Conflit,
 // doublon, autre refus : « Livrer la PR » serait refusé à l'identique ⇒ « Reprendre en session » (formulaire
-// Nouvelle session prérempli) ; offert aussi en repli après les deux premiers. PURE (pas de test dans ce dépôt).
+// Nouvelle session prérempli) ; offert aussi en repli après les deux premiers. PURE (testée : server/test/page-pure.test.ts).
 function deliveryOrders(list, refusalKind) {
   if (!refusalKind || !list.includes('merge')) return list;
   if (refusalKind === 'head-changed') return [...list.map(o => o === 'merge' ? 'adopt' : o), 'session'];
   if (refusalKind === 'technical') return [...list.map(o => o === 'merge' ? 'retry' : o), 'session'];
   return list.map(o => o === 'merge' ? 'session' : o);
 }
-// Premier message de la session de reprise (PURE, pas de test dans ce dépôt) : la PR, ce que le lanceur a dit, et la règle —
+// Premier message de la session de reprise (PURE, testée : server/test/page-pure.test.ts) : la PR, ce que le lanceur a dit, et la règle —
 // rien n'est mergé sans le go de l'humain. Une session qui livrerait seule ferait sauter la relecture que le refus garde.
 const RESUME_WHAT = { conflict:'résous le conflit avec la branche principale', duplicate:'vérifie si elle double un travail déjà livré ou ouvert (à fermer) ou si elle le complète (à livrer)',
   'head-changed':'relis les commits ajoutés après les contrôles du lanceur', technical:'comprends la panne de la livraison' };
@@ -1953,7 +1953,7 @@ function resumePrompt(hd, pr, kind, reason) {
     'Reprends-la : pars de la branche de la PR à jour dans un worktree neuf, ' + (RESUME_WHAT[kind] || 'comprends ce qui bloque') + ', rebase sur la branche principale juste avant, rejoue build et tests.',
     'Ne merge rien sans mon go : montre-moi d’abord ce que tu as changé et le résultat des contrôles.'].join('\n\n');
 }
-// Ce que dit l'en-tête du bloc de relecture (PURE, pas de test dans ce dépôt) : commits ajoutés, ou PR réécrite (rebase,
+// Ce que dit l'en-tête du bloc de relecture (PURE, testée : server/test/page-pure.test.ts) : commits ajoutés, ou PR réécrite (rebase,
 // force-push) dont il faut tout relire, ou rien à relire (la PR porte de nouveau la tête contrôlée).
 function diffHeadline(d) {
   if (!d || d.error) return '⛔ ' + ((d && d.error) || T('diff illisible', 'unreadable diff'));
@@ -4018,7 +4018,7 @@ const convWhen = at => {
 };
 // ── Markdown des messages de Claude ──
 // Les réponses de Claude sont écrites en markdown : affichées en texte brut, on lisait des ** et des ` partout.
-// Analyse PURE (texte -> arbre ; pas de test dans ce dépôt), puis construction DOM par
+// Analyse PURE (texte -> arbre ; testée : server/test/page-pure.test.ts), puis construction DOM par
 // createElement/textContent : jamais d'innerHTML, un transcript ne peut donc pas injecter de HTML. Liens : http(s) seuls.
 // Sous-ensemble utile : titres, paragraphes, listes (puces, numérotées, imbriquées), citations, blocs de code,
 // tableaux, filets ; en ligne : gras, italique, barré, code, liens [texte](url) et URL nues.
