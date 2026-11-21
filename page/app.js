@@ -1669,6 +1669,10 @@ function runOrders(phase, stage, pr) {
   // un « go » n'a plus de sens (il proposait de relancer un dev sur un correctif déjà en production).
   if (!stage && ['merge', 'production', 'doc'].includes(phase)) return [];
   const dead = ['dev-abandoned', 'dev-failed', 'pr-closed'].includes(stage);
+  // Run `go` : le feu vert est DÉJÀ donné, le correctif est en file jusqu'au run dev. Le reproposer (une carte de
+  // validation qui le masquait, une fois répondue, le laissait reparaître) faisait croire qu'il restait à donner.
+  // Seul un dev mort (échec, abandon, PR fermée) rend un nouveau go sensé.
+  if (phase === 'go' && !dead) return [];
   const prSide = !dead && (stage === 'pr-awaiting-approval' || !!pr || ['dev', 'relecture', 'recette', 'reprise'].includes(phase));
   const o = prSide ? ['merge', 'review', 'recette-skip', 'rework'] : ['go'];
   if (['diagnostic', 'suite', 'relance', 'reveil'].includes(phase)) o.push('verdict');
@@ -1797,6 +1801,12 @@ function cardAnswers(card, picks, others) {
 const cardsOn = () => !!(runData && runData.cardsToken === 'ok');
 const cardsFor = hd => cardsOn() ? (runData.cards || []).filter(c => String(c.hd) === String(hd)) : [];
 let cardUi = { key: null, picks: {}, others: {}, busy: false };
+// Carte de validation répondue ICI : le lanceur met le correctif en file, mais le run `go` n'apparaît qu'à sa passe
+// suivante. D'ici là, le run affiché (le diagnostic) reproposait « Feu vert ». On retient, par demande, le dernier run
+// au moment de la réponse ; tant que c'est toujours lui, pas de go. Un nouveau run lève la retenue. PURE (testée).
+const goHeld = new Map();
+function goHeldFor(held, hd, headDir) { return !!headDir && held.get(String(hd)) === headDir; }
+const headDirOf = it => ((it.runs || []).find(i => i.run.running) || (it.runs || [])[0] || it).run.dir;
 let cardFresh = null;   // demande dont les cartes ont été relues à l'instant pour l'affichage
 // Avant de proposer une carte, la relire dans le ticket : elle a pu être répondue ou remplacée depuis le dernier relevé.
 async function refreshCards(it, hd) {
@@ -1873,6 +1883,7 @@ async function sendCard(it, card) {
       : { ok: false, text: '⛔ ' + (j.error || T('réponse refusée (' + r.status + ')', 'answer refused (' + r.status + ')')) };
   } catch { res = { ok: false, text: T('⛔ serveur injoignable', '⛔ server unreachable') }; }
   cardUi.busy = false;
+  if (done && card.kind === 'validation') goHeld.set(hd, headDirOf(it));
   if (done && runData) { runData.cards = (runData.cards || []).filter(c => !(String(c.hd) === hd && String(c.id) === String(card.id))); cardUi = { key: null, picks: {}, others: {}, busy: false }; renderList(); }
   say(res.text.split('\n')[0]);
   if (orderUi.key !== key) return;
@@ -1934,7 +1945,7 @@ function renderOrders(it) {
   if (cards.length) refreshCards(it, hd);
   const dec = cardsOn() ? null : decisionOf(hd);
   // Une décision en attente remplace le go nu : « Lancer » de la carte part avec ses choix et laisse la trace.
-  const list = deliveryOrders(runOrders(r.phase, stage, pr).filter(o => !((dec || cards.some(c => c.kind === 'validation')) && o === 'go')), wait ? wait.refusalKind : null);
+  const list = deliveryOrders(runOrders(r.phase, stage, pr).filter(o => !((dec || cards.some(c => c.kind === 'validation') || goHeldFor(goHeld, hd, headDirOf(it))) && o === 'go')), wait ? wait.refusalKind : null);
   const noToken = !!(runData && runData.cardsToken === 'absent' && (r.files || []).some(f => f.name === 'questions.json'));
   if (!list.length && !dec && !cards.length && !noToken) return;
   box.append(el('h2', null, T('Piloter HD-' + hd, 'Control HD-' + hd)));
