@@ -22,6 +22,16 @@ describe('parseModelMenu', () => {
     expect(m.opts.map((o) => o.label)).toEqual(['Default (recommended)', 'Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5']);
     expect(m.cur).toBe(4); expect(m.sessionOnly).toBe(true);
   });
+  test('pied « Enter to set as default » (Claude Code 2.1.311) : reconnu', () => {
+    const scr = ['   Select model', '   Switch between Claude models. Your pick becomes the default for new sessions.', '',
+      '     1.  Default (recommended)  Opus 5.5 · Best for everyday, complex tasks', '     2.  Opus 5.5               For complex work and everyday tasks',
+      '     3.  Fable 5.2              For your toughest challenges', '     4.  Sonnet 5.5             Most efficient for simpler tasks',
+      '     5.  Haiku 5.5              Fastest for quick answers', '   ❯ 6.  Fable 5.1 ✔            Most capable for your hardest and longest-running tasks',
+      '      … +8 models', '', '   ● High effort (default) ←/→ to adjust', '', '   Enter to set as default · s to use this session only · Esc to cancel'].join('\n');
+    const m = parseModelMenu(scr)!;
+    expect(m.opts.map((o) => o.label)).toEqual(['Default (recommended)', 'Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1']);
+    expect(m.cur).toBe(5); expect(m.sessionOnly).toBe(true); expect(pickModel(m, 'sonnet')).toBe(3);
+  });
   test('menu sans la touche « s » : reconnu, mais sans choix de session', () => { expect(parseModelMenu(menu(0, '  Enter to save · Esc to cancel'))!.sessionOnly).toBe(false); });
   test('invite ordinaire ou autre dialogue : pas ce menu', () => { expect(parseModelMenu(PROMPT)).toBeNull(); expect(parseModelMenu('')).toBeNull(); });
   test('le modèle demandé : jamais la ligne « Default », même si elle le nomme', () => {
