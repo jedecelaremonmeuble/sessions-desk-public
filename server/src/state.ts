@@ -19,6 +19,7 @@ import { AskJudge, claudeAskAsync } from './asks-judge.ts';
 import { T } from './i18n.ts';
 import { Drafts } from './drafts.ts';
 import { claudeJsonPath, TrustReader } from './trust.ts';
+import { LaunchWatch, type Observed } from './launch-watch.ts';
 import {
   addContent, GUID, ieq, imatch, isDir, isFile, leaf, mtimeMs, netTrim, nowMs, parent, psString, readJson, readTail,
   setContent, setContentAtomic, splitPathParent, transcriptCreatedAt,
@@ -174,6 +175,8 @@ export class Dashboard {
   #stamps = new Map<string, number>();
   /** Approbation des dossiers par Claude Code (trust.ts) : lue, jamais écrite. */
   readonly #trust: TrustReader;
+  /** Lancements de nouvelles sessions surveillés jusqu'au démarrage de la session (launch-watch.ts). */
+  readonly launches: LaunchWatch;
 
   constructor(cfg: Config, driver: DriverClient) {
     this.cfg = cfg;
@@ -183,6 +186,7 @@ export class Dashboard {
     this.reloadSeen(true); this.reloadFavs(true); this.reloadHidden(true); this.reloadTagsManual(true);
     this.notifs = this.readNotifsFile();
     this.drafts = new Drafts(this.sf('sessions-new-drafts.json'));
+    this.launches = new LaunchWatch(this.sf('sessions-new-launches.json'));
     this.#trust = new TrustReader(() => claudeJsonPath(cfg.claude, (f) => mtimeMs(f) > 0));
     this.initReboot();
     if (cfg.allowWrite && !cfg.noBackground && process.env.SD_ASK_JUDGE !== '0')
@@ -555,6 +559,23 @@ export class Dashboard {
     return out;
   }
 
+  /** Lancements surveillés : rapprochés de TOUS les fichiers de ~/.claude/sessions (vivants ou non — une session
+   *  d'avant le lancement ne correspond jamais), et du transcript quand l'identifiant était fixé d'avance. */
+  updateLaunches(): void {
+    const all = this.launches.list();
+    if (!all.length) return;
+    if (!all.some((l) => l.state === 'pending')) { this.launches.update([]); return; }   // purge (> 24 h) seulement
+    const seen: Observed[] = [];
+    for (const name of listDir(this.sessionsDir)) {
+      if (!name.toLowerCase().endsWith('.json')) continue;
+      const s = readJson(join(this.sessionsDir, name)) as Record<string, unknown> | undefined;
+      if (!s || typeof s !== 'object') continue;
+      const sessionId = psString(s.sessionId), cwd = psString(s.cwd), startedAt = Number(s.startedAt) || 0;
+      if (sessionId && cwd) seen.push({ sessionId, cwd, startedAt });
+    }
+    this.launches.update(seen, (sid) => Boolean(this.meta(sid).path));
+  }
+
   // ───── redémarrage de Windows ─────
   get openFile(): string { return this.sf(`sessions-dashboard-open${this.cfg.suffix}.json`); }
   get rebootFile(): string { return this.sf(`sessions-dashboard-reboot${this.cfg.suffix}.json`); }
@@ -624,11 +645,12 @@ export class Dashboard {
     const restarts: unknown[] = [];
     for (const l of readTail(this.sf('restart-idle-sessions.jsonl'), 64 * 1024)) { try { restarts.push(JSON.parse(l)); } catch { /* idem */ } }
     const sess = await this.openSessions();
+    try { this.updateLaunches(); } catch { /* idem */ }
     try { this.saveOpenSeen(sess); } catch { /* idem */ }
     try { this.writeStatusChanges(sess); } catch { /* idem */ }
     let quota: unknown[] = [];
     try { quota = markActiveAccount(readClaudeUsage(this.cfg), activeAccountUuid(this.cfg)); } catch { /* idem */ }
-    return { now: nowMs(), sessions: sess, reboot: this.rebootInfo(sess), restarts: restarts.slice(-40), favs: [...this.favs], hidden: [...this.hidden], drafts: this.drafts.list(), notifs: this.notifs.slice(-60), quota, promptSuggestion: promptSuggestionSetting(this.cfg), teams: this.cfg.modules.teams ? this.teamsWaits() : null, modules: modulesView(this.cfg.modules), ui: this.cfg.ui, configError: this.cfg.configError, configWarnings: this.cfg.configWarnings, configErrorKept: this.cfg.configErrorKept, configRestart: this.cfg.configRestart };
+    return { now: nowMs(), sessions: sess, reboot: this.rebootInfo(sess), restarts: restarts.slice(-40), favs: [...this.favs], hidden: [...this.hidden], drafts: this.drafts.list(), notifs: this.notifs.slice(-60), launches: this.launches.view((p) => this.trusted(p)), quota, promptSuggestion: promptSuggestionSetting(this.cfg), teams: this.cfg.modules.teams ? this.teamsWaits() : null, modules: modulesView(this.cfg.modules), ui: this.cfg.ui, configError: this.cfg.configError, configWarnings: this.cfg.configWarnings, configErrorKept: this.cfg.configErrorKept, configRestart: this.cfg.configRestart };
   }
 
   /** Get-TeamsWaits : résumé tenu par teams-watcher.ts (state/teams-waits/_summary.json), relu quand il change. */

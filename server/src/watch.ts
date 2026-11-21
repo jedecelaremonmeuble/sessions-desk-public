@@ -8,8 +8,10 @@ import { refreshPrs, startGitRefresh } from './gitpr.ts';
 import type { Automations } from './automations.ts';
 import type { Launcher } from './launcher.ts';
 import type { Dashboard, Session } from './state.ts';
-import { addContent, ieq, netTrim, nowMs, psString } from './util.ts';
+import { addContent, ieq, leaf, netTrim, nowMs, psString } from './util.ts';
 import { roundHalfEven } from './usage.ts';
+import { probableCause } from './launch-watch.ts';
+import { T } from './i18n.ts';
 
 export class Watch {
   readonly d: Dashboard;
@@ -32,7 +34,7 @@ export class Watch {
     const e = { at: nowMs(), kind, sessionId: session.sessionId, title, text, ...(hd ? { hd } : {}), ...(pass ? { pass } : {}) };
     this.d.notifs.push(e); while (this.d.notifs.length > 200) this.d.notifs.shift();
     try { addContent(this.d.sf('sessions-dashboard-notifs.jsonl'), JSON.stringify(e)); } catch { /* idem */ }
-    const launch = pass ? `${this.d.cfg.url}?pass=${encodeURIComponent(pass)}` : hd ? `${this.d.cfg.url}?run=${hd}` : kind === 'launcher' ? `${this.d.cfg.url}?view=launcher` : `cc-focus://${session.pid}`;
+    const launch = pass ? `${this.d.cfg.url}?pass=${encodeURIComponent(pass)}` : hd ? `${this.d.cfg.url}?run=${hd}` : kind === 'launcher' ? `${this.d.cfg.url}?view=launcher` : kind === 'launch' ? this.d.cfg.url : `cc-focus://${session.pid}`;
     this.d.driver.call('toast', { title, text, launch }).catch(() => undefined);
   }
 
@@ -71,6 +73,13 @@ export class Watch {
     if (cfg.primary) { try { this.#updatePrState(); } catch { /* idem */ } }
     try { this.#updateGitState(st.sessions); } catch { /* idem */ }
     if (!cfg.primary) return;
+    // « Lancée mais rien ne tourne » (launch-watch.ts) : une notification par lancement, la page garde le bandeau.
+    try {
+      for (const l of this.d.launches.takeAlerts()) {
+        const c = probableCause(l, l.worktree ? false : this.d.trusted(l.cwd));
+        this.notify('launch', { sessionId: null, pid: 0 }, T('Nouvelle session : rien ne tourne', 'New session: nothing is running'), `${leaf(l.cwd) || l.cwd} — ${c.text}`);
+      }
+    } catch { /* idem */ }
     if (this.launcher.enabled) try { await this.launcher.runAlerts((t, x, hd) => this.notify('launcher', { sessionId: null, pid: 0 }, t, x, hd)); } catch { /* idem */ }
     if (this.automations?.enabled) try {          // échecs des automates du poste seulement (passAlerts)
       for (const { def, pass } of this.automations.alerts()) {

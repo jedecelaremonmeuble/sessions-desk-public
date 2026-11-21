@@ -49,7 +49,7 @@ const REMOTE_OK = new Set(['/', '/app.js', '/app.css', '/api/ping', '/api/state'
 const REMOTE_NEVER = new Set(['/api/stop', '/api/hook', '/api/test-busy', '/api/relay/restart', '/api/config', '/api/config/check', '/api/config/save']);
 /** Édition de config.json (config-edit.ts) : depuis le poste seulement. */
 const CONFIG_ROUTES = new Set(['/api/config', '/api/config/check', '/api/config/save']);
-const ACTIONS = new Set(['/api/focus', '/api/reopen', '/api/ack', '/api/send', '/api/keys', '/api/model', '/api/relaunch', '/api/fav', '/api/new', '/api/close', '/api/hide', '/api/reopen-many', '/api/reboot-dismiss', '/api/git-refresh', '/api/close-many', '/api/relaunch-many', '/api/send-many', '/api/draft-save', '/api/draft-delete', '/api/tags', '/api/teams-wait', '/api/teams-seen', '/api/teams-reply', '/api/teams-link', '/api/launcher/order', '/api/automations/order', '/api/launcher/answer', '/api/relay/restart']);
+const ACTIONS = new Set(['/api/focus', '/api/reopen', '/api/ack', '/api/send', '/api/keys', '/api/model', '/api/relaunch', '/api/fav', '/api/new', '/api/close', '/api/hide', '/api/reopen-many', '/api/reboot-dismiss', '/api/git-refresh', '/api/close-many', '/api/relaunch-many', '/api/send-many', '/api/draft-save', '/api/draft-delete', '/api/launch-dismiss', '/api/tags', '/api/teams-wait', '/api/teams-seen', '/api/teams-reply', '/api/teams-link', '/api/launcher/order', '/api/automations/order', '/api/launcher/answer', '/api/relay/restart']);
 const HEADLESS_REFUSED = new Set(['/api/focus', '/api/send', '/api/keys', '/api/model', '/api/close', '/api/relaunch']);
 /** Routes d'un module optionnel : sans lui, elles n'existent pas (404, comme une route inconnue). */
 const LAUNCHER_ROUTES = new Set(['/api/launcher', '/api/launcher/file', '/api/launcher/hd', '/api/launcher/order', '/api/launcher/cards', '/api/launcher/answer', '/api/test-launcher-alerts']);
@@ -743,6 +743,11 @@ export class Server {
         case '/api/draft-save': {                         // « Enregistrer en brouillon » du formulaire Nouvelle session
           const j = await payload();
           if (!isObjBody(j)) { status = 400; body = '{}'; } else body = JSON.stringify(this.d.drafts.save(j));
+          break;
+        }
+        case '/api/launch-dismiss': {   // « lancée mais rien ne tourne » : signal écarté (launch-watch.ts)
+          const j = await payload();
+          if (!isObjBody(j)) { status = 400; body = '{}'; } else body = JSON.stringify({ dismissed: this.d.launches.dismiss(psString(pget(j, 'id'))) });
           break;
         }
         case '/api/draft-delete': {

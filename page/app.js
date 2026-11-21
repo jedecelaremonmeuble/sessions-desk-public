@@ -2135,6 +2135,31 @@ async function restartRelay() {
 }
 $('relaybtn').addEventListener('click', restartRelay);
 
+// « Lancée mais rien ne tourne » : bandeau en tête de liste, jusqu'à ce que la session démarre (il part alors seul) ou
+// qu'on l'écarte. Cause probable : question d'approbation du dossier (dossier non approuvé, worktree neuf), sinon
+// l'onglet lui-même (erreur, worktree non créé, onglet fermé).
+function launchBanner(l) {
+  const when = new Date(l.at).toLocaleTimeString(LOCALE, { hour:'2-digit', minute:'2-digit' });
+  const b = el('div', 'rbanner launchlate');
+  const head = el('div', 'lh', T('⚠ Nouvelle session lancée à ' + when + ' — rien ne tourne', '⚠ New session launched at ' + when + ' — nothing is running'));
+  const x = el('button', 'x', '✕'); x.title = T('Écarter ce signal', 'Dismiss this alert');
+  x.onclick = e => { e.stopPropagation(); dismissLaunch(l.id); };
+  head.append(x);
+  const cause = l.trust
+    ? T('Probablement bloquée sur la question d’approbation du dossier (« Do you trust the files in this folder? ») : répondez dans l’onglet.', 'Probably waiting on the folder trust question ("Do you trust the files in this folder?"): answer in the tab.')
+    : T('Aucune session n’a démarré : regardez l’onglet (erreur au lancement, worktree non créé, onglet fermé ?).', 'No session started: check the tab (launch error, worktree not created, tab closed?).');
+  b.append(head, el('div', 'ld', (l.worktree ? T('worktree neuf · ', 'new worktree · ') : '') + (short(l.cwd) || l.cwd)), el('div', 'ld', cause));
+  if (l.prompt) b.append(el('div', 'ld lp', '« ' + l.prompt + ' »'));
+  b.title = l.cwd + T('\nLe signal disparaît seul dès que la session démarre.', '\nThe alert goes away by itself as soon as the session starts.');
+  return b;
+}
+async function dismissLaunch(id) {
+  if (!canWrite) return say(T('lecture seule à distance', 'read-only remotely'));
+  try {
+    await (await fetch('/api/launch-dismiss', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ id }) })).json();
+    data.launches = (data.launches || []).filter(l => l.id !== id); renderList(); say(T('signal écarté', 'alert dismissed'));
+  } catch { say(T('échec de la demande', 'request failed')); }
+}
 async function dismissReboot() { try { await post('/api/reboot-dismiss'); say(T('liste d\'avant le redémarrage oubliée', 'pre-restart list dismissed')); } catch { say(T('échec de la demande', 'request failed')); } tick(); }
 function rebootPanel() {
   const rb = data.reboot; if (!rb) return null;
@@ -2190,6 +2215,8 @@ function renderList() {
     const b = el('div', 'rbanner', T('↻ ' + plural(data.reboot.sessions.length, 'session ouverte', 'sessions ouvertes') + ' avant le redémarrage — rouvrir…', '↻ ' + plural(data.reboot.sessions.length, 'session open', 'sessions open') + ' before the restart — reopen…'));
     b.title = T('Afficher la liste dans la vue d\'ensemble', 'Show the list in the overview'); b.onclick = () => select(null); list.append(b);
   }
+  // Nouvelle session lancée il y a plus d'une minute sans qu'aucune session n'ait démarré (serveur : launch-watch.ts).
+  for (const l of data.launches || []) list.append(launchBanner(l));
   // Autres postes injoignables (éteints, en veille) : dit en tête, sans rien bloquer — leurs sessions reviennent seules.
   for (const p of peersDown(data.peers)) {
     const b = el('div', 'rbanner peerdown', '🖧 ' + p.name + T(' — poste injoignable', ' — machine unreachable') + (p.at ? T(' · vu il y a ', ' · seen ') + ago(data.now - p.at) + T('', ' ago') : ''));

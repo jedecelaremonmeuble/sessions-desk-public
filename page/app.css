@@ -205,6 +205,9 @@ mark { background:#fde68a; color:inherit; border-radius:2px; padding:0 1px; } @m
 .reboot .actions { margin-top:10px; } .reboot .hint { color:var(--mute); font-size:12px; margin-top:6px; }
 .rbanner { margin:6px 4px 2px; padding:7px 10px; border:1px solid var(--shell); color:var(--shell); border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
 .rbanner:hover { background:var(--sel); }
+.rbanner.launchlate { border-color:var(--waiting); color:var(--ink); cursor:default; font-weight:400; } .rbanner.launchlate:hover { background:none; }
+.rbanner.launchlate .lh { display:flex; align-items:flex-start; gap:8px; color:var(--waiting); font-weight:600; } .rbanner.launchlate .lh .x { margin-left:auto; padding:0 6px; font-size:12px; }
+.rbanner.launchlate .ld { margin-top:3px; overflow-wrap:anywhere; } .rbanner.launchlate .lp { color:var(--mute); font-style:italic; }
 /* Ménage : sessions qui peuvent se fermer, cochables. */
 .notif.pick { grid-template-columns:18px 14px 150px minmax(0, 1fr); } .notif.pick .nx { grid-column:4; }
 .notif.pick input { margin:2px 0 0; cursor:pointer; }

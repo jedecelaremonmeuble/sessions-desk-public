@@ -101,6 +101,28 @@ repository, so no trust is inferred from a parent. Then:
   that the tab will ask the question;
 - if `.claude.json` cannot be read, the status is unknown and nothing is refused.
 
+### Launched but nothing running
+
+Every successful launch from the page is recorded: from the new-session form, a draft, the API, or an optional
+module calling `/api/new`. The record holds the folder (the target worktree for a new branch), the time, the start
+of the first message, and the session id when it was fixed in advance. Records are kept in
+`~/.claude/sessions-desk/sessions-new-launches.json`, so a server restart — a deployment often follows a launch —
+does not lose them.
+
+Each refresh, a pending launch is matched against the session files in `~/.claude/sessions`:
+
+- with a fixed session id, only that session counts (a transcript already written counts too);
+- otherwise, a session in the same folder (case and separators ignored) started after the launch, give or take
+  two seconds;
+- a session is used for one launch only. With two launches in the same folder a few seconds apart, the oldest
+  launch takes the oldest session and the second waits for its own.
+
+After about a minute with no match, the page shows a banner at the top of the list with the folder, time, start
+of the message and probable cause, and one notification is sent. The cause is "probably waiting on the folder
+trust question: answer in the tab" for an untrusted folder or a new worktree; otherwise it is "check the tab". The
+banner goes away by itself when the session starts, or can be dismissed. Records older than 24 hours are dropped.
+Nothing is ever typed into the tab, and Claude Code's configuration is never written.
+
 ## Configuration
 
 Everything specific to a machine lives in `~/.claude/sessions-desk/config.json` (another path: `--config <file>`
