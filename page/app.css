@@ -78,7 +78,12 @@ body.ro .twaits .twb { display:none; }
          animation:sd-shimmer 2.4s linear infinite; animation-delay:var(--sd-ph, 0ms); }
 @keyframes sd-shimmer { from { background-position:100% 0; } to { background-position:0 0; } }
 .spinm { color:var(--mute); font-variant-numeric:tabular-nums; }
-@media (prefers-reduced-motion: reduce) { .busy .dot::before, .spinv { animation:none; } .spinv { -webkit-text-fill-color:currentColor; background:none; } }
+/* Session lancée, pas encore dans la liste (renderAwaiting) */
+.awaiting { display:flex; flex-direction:column; align-items:center; gap:8px; padding:64px 16px; text-align:center; }
+.awaiting .spin { font-size:32px; line-height:1; color:var(--busy); }
+.awaiting .spin::before { content:'✻'; animation:sd-spin 1.2s linear infinite; }
+.awaiting .awt { font-size:16px; font-weight:600; }
+@media (prefers-reduced-motion: reduce) { .busy .dot::before, .spinv, .awaiting .spin::before { animation:none; } .spinv { -webkit-text-fill-color:currentColor; background:none; } }
 .idle { --c:var(--idle); } .busy { --c:var(--busy); } .waiting { --c:var(--waiting); } .ask { --c:var(--ask); } .done { --c:var(--done); } .shell { --c:var(--shell); } .teams { --c:var(--idle); } .closed { --c:var(--closed); }
 .waiting .t, .ask .t, .done .t { font-weight:600; }
 .row-s.run.done .t { font-weight:400; }   /* run du lanceur réussi : rien à relire en urgence (échec et PR à valider restent en gras) */
