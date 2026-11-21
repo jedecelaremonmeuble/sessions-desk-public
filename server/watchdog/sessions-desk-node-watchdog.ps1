@@ -55,8 +55,16 @@ if (Test-Up) { return }
 # exprès, inutile d'attendre — et ce n'est pas une panne.
 $marker = Join-Path $StateDir "sessions-desk-node-$Port.deploying"
 $deploy = if ((Test-Path $marker) -and ((Get-Date) - (Get-Item $marker).LastWriteTime).TotalMinutes -lt 2) { "$(Get-Content $marker -Raw)".Trim() }
-Remove-Item $marker -Force -ErrorAction SilentlyContinue
-if (-not $deploy) {
+if ($deploy) {
+    # Le marqueur reste tant que le déploiement attend son serveur (c'est lui qui le retire). Un serveur déjà lancé
+    # pour ce déploiement et encore muet est en train de démarrer : on le laisse faire — l'arrêter ici rallongeait
+    # la coupure. S'il reste muet, c'est le déploiement qui l'arrête et revient à la version précédente.
+    $started = 0
+    if ((Test-Path $pidFile) -and (Get-Item $pidFile).LastWriteTime -ge (Get-Item $marker).LastWriteTime -and
+        [int]::TryParse("$(Get-Content $pidFile -Raw)".Trim(), [ref]$started) -and
+        (Test-OurServer (Get-CimInstance Win32_Process -Filter "ProcessId=$started" -ErrorAction SilentlyContinue))) { return }
+} else {
+    Remove-Item $marker -Force -ErrorAction SilentlyContinue   # marqueur périmé d'un déploiement interrompu
     # Un démarrage peut être en cours (quelques secondes) : on recontrôle avant de relancer.
     Start-Sleep -Seconds 5
     if (Test-Up) { return }

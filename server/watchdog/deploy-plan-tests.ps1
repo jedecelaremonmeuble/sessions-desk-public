@@ -132,5 +132,13 @@ if (Get-Command New-ScheduledTask -ErrorAction SilentlyContinue) {
     Check 'tâche : définition réelle, autre argument ⇒ reposée' (-not (Test-SameWatchdogTask $real $tx "$ta -AllowWrite" $me))
 }
 
+# ── Renoncer avant de couper (poste saturé) ──
+Check 'préparation normale ⇒ on déploie' (-not (Test-PrepareTooSlow 5.2 20 $false $true))
+Check 'préparation à la limite ⇒ on déploie' (-not (Test-PrepareTooSlow 20 20 $false $true))
+Check 'préparation trop longue, serveur en service ⇒ on renonce' (Test-PrepareTooSlow 80.4 20 $false $true)
+Check 'préparation trop longue sous -Force ⇒ on déploie' (-not (Test-PrepareTooSlow 80.4 20 $true $true))
+Check 'préparation trop longue, aucun serveur en service ⇒ on déploie' (-not (Test-PrepareTooSlow 80.4 20 $false $false))
+Check 'limite à 0 ⇒ jamais de renoncement' (-not (Test-PrepareTooSlow 80.4 0 $false $true))
+
 if ($script:fail) { Write-Host "$($script:fail) échec(s)"; exit 1 }
 Write-Host 'tous les tests passent'

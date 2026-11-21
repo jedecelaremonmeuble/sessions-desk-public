@@ -209,6 +209,10 @@ service. A clone that is behind the running commit is refused (`-Rollback` to go
 first asked to stop cleanly (`/api/stop`: it finishes what it has received), and is killed only if it does not exit.
 Each deployment is logged next to the watchdog's restarts in `%TEMP%\sessions-desk-node-watchdog.log` (hot page swap
 or restart, clean or forced stop, length of the outage).
+Two safeguards surround a restart. If preparing the new copy takes more than 20 s while a server is in service (a
+sign the machine is overloaded), the deployment gives up before stopping anything (`-Force` to go ahead anyway).
+If the new server has not answered after 90 s, it is stopped, the previous copy is put back and restarted, and the
+deployment fails; the failed copy is kept in `node-<port>.failed`.
 
 The server keeps its own performance trace in `%TEMP%\sessions-desk-node-<port>.perf.log` (moved to `.old` past
 1 MB): one line per start with the time spent in each phase up to the first computed state (marked `LENT` past

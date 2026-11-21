@@ -77,7 +77,13 @@ function Write-DeployLog([int]$Port, [string]$Message) {
     try { Add-Content (Join-Path $env:TEMP 'sessions-desk-node-watchdog.log') "$(Get-Date -Format s) [$Port] déploiement : $Message" } catch { }
 }
 
-<# Prend le verrou de déploiement du port ; attend (au plus $TimeoutSec) qu'un autre déploiement finisse. #>
+# Faut-il renoncer avant de couper ? Oui quand la préparation a dépassé la limite alors qu'un serveur est en service :
+# un poste saturé rendrait aussi le démarrage du nouveau serveur interminable. Jamais sous -Force, ni sans serveur à
+# protéger, ni limite à 0. Pure.
+function Test-PrepareTooSlow([double]$Seconds, [int]$LimitSeconds, [bool]$Force, [bool]$Serving) {
+    return $Serving -and -not $Force -and $LimitSeconds -gt 0 -and $Seconds -gt $LimitSeconds
+}
+
 # La tâche planifiée en place est-elle celle qu'Install-NodeWatchdog.ps1 poserait ? Compare TOUT ce qu'il pose : action,
 # compte, déclencheurs (ouverture de session + toutes les 2 min) et réglages. Au moindre écart : $false, et la tâche
 # est reposée — une tâche périmée laissée en place lancerait un serveur avec d'anciens chemins. Pure : reçoit la tâche.
@@ -95,6 +101,7 @@ function Test-SameWatchdogTask($Task, [string]$Execute, [string]$Arguments, [str
     return $true
 }
 
+<# Prend le verrou de déploiement du port ; attend (au plus $TimeoutSec) qu'un autre déploiement finisse. #>
 function Enter-DeployLock([int]$Port, [string]$What, [int]$TimeoutSec = 600) {
     $m = [Threading.Mutex]::new($false, "Local\sessions-desk-deploy-$Port")
     $info = Join-Path $env:TEMP "sessions-desk-deploy-$Port.lock.txt"
