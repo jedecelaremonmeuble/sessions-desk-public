@@ -27,6 +27,14 @@
   un changement fait sur 8767 s'affiche sur 8765 et n'y est pas écrasé.
 
   -Uninstall : retire la tâche et arrête le serveur Node du port (le dossier d'exécution reste).
+
+  Deux garde-fous autour de la coupure :
+  - poste saturé : si la préparation (archive + compilation du pilote, 4 à 6 s d'ordinaire) dépasse
+    -PrepareLimitSeconds (20 s) alors qu'un serveur est en service, le script RENONCE avant de couper — le serveur
+    en service n'est pas touché, sortie en échec. -Force déploie quand même ;
+  - nouveau serveur muet : s'il ne répond pas dans -StartTimeoutSeconds (90 s), il est arrêté, la copie précédente
+    (.previous) est remise en place et relancée, et le script sort en échec. La copie en échec reste dans
+    node-<port>.failed pour le diagnostic.
 .EXAMPLE
   pwsh -NoProfile -File server/watchdog/Install-NodeWatchdog.ps1
 #>
@@ -34,7 +42,12 @@ param(
     [int]$Port = 8767,
     [switch]$AllowWrite,
     [switch]$Primary,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    # Préparation plus longue que ça, serveur en service : on renonce avant de couper (0 = jamais). -Force passe outre.
+    [int]$PrepareLimitSeconds = 20,
+    [switch]$Force,
+    # Attente de la première réponse du nouveau serveur avant de revenir à la copie précédente.
+    [int]$StartTimeoutSeconds = 90
 )
 $ErrorActionPreference = 'Stop'
 if ($Port -eq 8765 -and -not $Primary) { throw 'Port 8765 = production : -Primary requis (bascule par server/watchdog/Switch-SessionsDesk.ps1).' }
@@ -51,7 +64,17 @@ $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 # Port sans écouteur : réponse immédiate (un ping HTTP vers un port fermé coûte ~4 s sous Windows).
 function Test-Listening { [bool]([Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners() | Where-Object Port -eq $Port) }
 
-function Stop-NodeServer {
+# Attend que le serveur du port réponde à /api/ping ; $false s'il reste muet.
+function Wait-Server([int]$Seconds) {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $Seconds) {
+        Start-Sleep -Milliseconds 500
+        if (Test-Listening) { try { $null = Invoke-RestMethod "http://localhost:$Port/api/ping" -TimeoutSec 3; return $true } catch {} }
+    }
+    return $false
+}
+
+function Stop-NodeServer([int]$WaitSeconds = 5) {
     $ids = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | ForEach-Object OwningProcess)
     $pidFile = Join-Path $env:TEMP "sessions-desk-node-$Port.pid"
     $old = 0
@@ -84,8 +107,37 @@ function Stop-NodeServer {
         Write-DeployLog $Port "arrêt FORCÉ du serveur (pid $id) : pas de réponse à /api/stop ou pas sorti à temps"
         Stop-Process -Id $id -Force
     }
-    for ($i = 0; $i -lt 40 -and (Test-Listening); $i++) { Start-Sleep -Milliseconds 125 }
+    for ($i = 0; $i -lt $WaitSeconds * 8 -and (Test-Listening); $i++) { Start-Sleep -Milliseconds 125 }
     if (Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue) { throw "port $Port toujours tenu par un process qui n'est pas un serveur Node de ce port" }
+}
+
+# Le nouveau serveur est resté muet : retour à la copie précédente. Il est arrêté (le port peut mettre du temps à être
+# rendu par un process figé : on l'attend), les dossiers sont échangés dans l'autre sens, tâche désactivée pendant
+# l'échange, puis la copie précédente est relancée et on vérifie qu'elle répond. Rend la phrase du compte rendu.
+function Restore-PreviousCopy {
+    $prev = "$runDir.previous"
+    if (-not (Test-Path (Join-Path $prev 'server\src\main.ts'))) {
+        Write-DeployLog $Port 'retour arrière impossible : pas de copie précédente'
+        return 'pas de copie précédente à remettre en service'
+    }
+    $prevSha = Get-DeployedCommit $prev
+    $name = if ($prevSha) { $prevSha.Substring(0, 10) } else { 'de commit inconnu' }
+    $t0 = Get-Date
+    $null = Disable-ScheduledTask -TaskName $taskName
+    Stop-NodeServer -WaitSeconds 20
+    $failed = "$runDir.failed"
+    if (Test-Path $failed) { Remove-Item $failed -Recurse -Force }
+    Move-Item $runDir $failed
+    Move-Item $prev $runDir
+    $null = Enable-ScheduledTask -TaskName $taskName
+    Set-Content $marker "retour $name"
+    Start-ScheduledTask -TaskName $taskName
+    $ok = Wait-Server 60
+    $took = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
+    $m = if ($ok) { "version précédente $name remise en service, elle répond ($took s après l'abandon)" }
+    else { "version précédente $name remise en place, mais elle ne répond pas non plus après $took s" }
+    Write-DeployLog $Port "retour arrière : $m ; copie en échec gardée dans $failed"
+    return $m
 }
 
 if ($Uninstall) {
@@ -114,7 +166,9 @@ $pwsh = Resolve-StablePwsh (Get-Process -Id $PID).Path
 # second attend la fin du premier. Voir Deploy-Plan.ps1.
 $lock = Enter-DeployLock $Port "Install-NodeWatchdog.ps1 $($sha.Substring(0, 10))"
 $marker = Join-Path $env:TEMP "sessions-desk-node-$Port.deploying"
+$touched = $false   # vrai dès que le serveur en service ou sa tâche ont été touchés
 try {
+    $prep = [Diagnostics.Stopwatch]::StartNew()
     $stage = "$runDir.new"
     if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
     New-Item -ItemType Directory -Force $stage | Out-Null
@@ -132,6 +186,16 @@ try {
         "node $node ($v)"
         "mode $role"
     )
+
+    # Poste saturé : la préparation a traîné, le démarrage du nouveau serveur traînerait aussi — et là ce serait une
+    # coupure. On renonce tant que rien n'est touché ; un refus à tort ne coûte qu'une relance (la compilation
+    # suivante est incrémentale). Sans serveur en service il n'y a rien à protéger.
+    $prepSec = [math]::Round($prep.Elapsed.TotalSeconds, 1)
+    if (Test-PrepareTooSlow $prepSec $PrepareLimitSeconds ([bool]$Force) (Test-Listening)) {
+        Remove-Item $stage -Recurse -Force
+        throw "déploiement RENONCÉ avant la coupure : préparation en $prepSec s (limite $PrepareLimitSeconds s), poste saturé ? Le serveur en service n'a pas été touché. Relancer plus tard, ou -Force pour déployer quand même."
+    }
+    if ($Force -and $PrepareLimitSeconds -gt 0 -and $prepSec -gt $PrepareLimitSeconds) { Write-DeployLog $Port "préparation en $prepSec s (limite $PrepareLimitSeconds s) : poursuivi sous -Force" }
 
     # 2. Tâche : mêmes réglages que celle du .ps1 (ouverture de session + toutes les 2 min, sans fenêtre). Sa pose
     #    (Register-ScheduledTask) prend de temps à autre 6 à 19 s au lieu d'une : elle ne se fait donc PAS pendant la
@@ -158,6 +222,7 @@ try {
         if ($posed -match '\\Program Files\\WindowsApps\\') { throw "action de la tâche sur un chemin versionné : $posed" }
     }
     $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    $touched = $true
     $taskNote = 'tâche inchangée, non reposée'
     if (-not $existing) { $taskNote = 'tâche absente, posée pendant la coupure' }
     elseif (-not (Test-SameWatchdogTask $existing $taskExe $taskArgs $user)) {
@@ -194,33 +259,36 @@ try {
     Set-Content $marker $sha.Substring(0, 10)
     Start-ScheduledTask -TaskName $taskName
     & $mark 'tâche lancée'
-    $up = $false
-    for ($i = 0; $i -lt 40 -and -not $up; $i++) {
-        Start-Sleep -Milliseconds 500
-        if (Test-Listening) { try { $null = Invoke-RestMethod "http://localhost:$Port/api/ping" -TimeoutSec 3; $up = $true } catch {} }
-    }
+    # Le marqueur reste en place pendant l'attente : le watchdog, qui repasse toutes les 2 min, laisse démarrer le
+    # serveur qu'il a lancé pour ce déploiement au lieu de l'arrêter comme « muet ».
+    $up = Wait-Server $StartTimeoutSeconds
     if ($up) {
         & $mark 'première réponse'
         # Lancement de node par le watchdog : heure d'écriture du fichier pid, juste après son Start-Process.
         $pf = Join-Path $env:TEMP "sessions-desk-node-$Port.pid"
         if ((Test-Path $pf) -and (Get-Item $pf).LastWriteTime -gt $cut) { $steps['node lancé'] = [math]::Round(((Get-Item $pf).LastWriteTime - $cut).TotalSeconds, 1) }
         $detail = ($steps.GetEnumerator() | Sort-Object Value | ForEach-Object { "$($_.Key) $($_.Value)" }) -join ' · '
-        Write-DeployLog $Port "serveur $($sha.Substring(0, 10)) en service : coupure de $($steps['première réponse']) s (s depuis l'arrêt demandé : $detail ; $taskNote)"
+        Write-DeployLog $Port "serveur $($sha.Substring(0, 10)) en service : coupure de $($steps['première réponse']) s (s depuis l'arrêt demandé : $detail ; $taskNote ; préparation $prepSec s)"
     }
-    if (-not $up) { throw "le serveur ne répond pas sur $Port (voir $env:TEMP\sessions-desk-node-watchdog.log et sessions-desk-node-$Port.err.log)" }
+    if (-not $up) {
+        Write-DeployLog $Port "serveur $($sha.Substring(0, 10)) muet après $StartTimeoutSeconds s : retour à la version précédente"
+        $back = Restore-PreviousCopy
+        throw "le serveur $($sha.Substring(0, 10)) ne répond pas sur $Port après $StartTimeoutSeconds s : $back (voir $env:TEMP\sessions-desk-node-watchdog.log et sessions-desk-node-$Port.err.log)"
+    }
     $w = Invoke-RestMethod "http://localhost:$Port/api/whoami"
     if ([bool]$w.write -ne [bool]$AllowWrite) { throw "serveur en $(if ($w.write) { 'écriture' } else { 'lecture seule' }) alors que demandé : $(if ($AllowWrite) { 'écriture' } else { 'lecture seule' })" }
     Write-Host "Serveur Node sur http://localhost:$Port/ ($role), commit $($sha.Substring(0,7)), tâche « $taskName »"
 } catch {
     Write-DeployLog $Port "installation de $($sha.Substring(0, 10)) EN ÉCHEC : $($_.Exception.Message)"
     # Ne jamais laisser le poste sans serveur : copie précédente remise en place si la nouvelle n'a pas pris sa place,
-    # tâche réactivée et lancée (elle était désactivée pendant l'échange).
-    try {
+    # tâche réactivée et lancée (elle était désactivée pendant l'échange). Rien à remettre si rien n'a été touché
+    # (renoncement avant la coupure).
+    if ($touched) { try {
         if (-not (Test-Path $runDir) -and (Test-Path "$runDir.previous")) { Move-Item "$runDir.previous" $runDir; Write-DeployLog $Port 'copie précédente remise en service' }
         $t = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
         if ($t -and $t.State -eq 'Disabled') { $null = Enable-ScheduledTask -TaskName $taskName }
         if ($t) { Start-ScheduledTask -TaskName $taskName }
-    } catch { Write-DeployLog $Port "remise en service impossible : $($_.Exception.Message)" }
+    } catch { Write-DeployLog $Port "remise en service impossible : $($_.Exception.Message)" } }
     throw
 } finally {
     Remove-Item $marker -Force -ErrorAction SilentlyContinue
