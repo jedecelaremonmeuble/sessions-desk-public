@@ -8,6 +8,7 @@ import { run } from './gitpr.ts';
 import { draftHolds, promptDraft } from './prompt.ts';
 import { isRelance } from './quiet.ts';
 import { checkTag, type Dashboard, type Session } from './state.ts';
+import type { Scheduled } from './scheduled.ts';
 import { addContent, GUID, ieq, isDir, netTrim, nowMs, psArray, psIntZero, psString, sleep } from './util.ts';
 import { T } from './i18n.ts';
 import { commandOf, Commands } from './commands.ts';
@@ -220,12 +221,23 @@ export class Actions {
     return null;
   }
 
+  /** Tâches programmées par la session qui mourraient avec son process (non durables). */
+  static pendingJobs(s: Session): Scheduled[] { return (Array.isArray(s.scheduled) ? s.scheduled as Scheduled[] : []).filter((j) => !j.durable); }
+  static jobsLost(n: number, relaunch = false): string {
+    const fr = relaunch ? 'la relancer' : 'la fermer', en = relaunch ? 'relaunching it' : 'closing it';
+    return n > 1 ? T(`${n} tâches programmées attendent dans cette session : ${fr} les annule`, `${n} scheduled tasks are waiting in this session: ${en} cancels them`)
+      : T(`une tâche programmée attend dans cette session : ${fr} l’annule`, `a scheduled task is waiting in this session: ${en} cancels it`);
+  }
+
   /** Invoke-Close : /exit si inactive (arrêt du process s'il ne sort pas en 10 s) ; sinon needForce, puis arrêt sur force. */
   async close(pid: number, force: boolean): Promise<Record<string, unknown>> {
     const sess = await this.session(pid);
     if (!sess) return { error: T('session introuvable', 'session not found') };
     if (!alive(pid)) return { error: T('process introuvable', 'process not found') };
-    if (!force) {
+    // Tâche programmée en attente : on demande confirmation ; confirmée, une session inactive sort quand même par /exit.
+    const jobs = Actions.pendingJobs(sess).length;
+    if (!force && jobs) return { error: Actions.jobsLost(jobs), needForce: true, jobs };
+    if (!force || (jobs && ieq(sess.status, 'idle'))) {
       if (!ieq(sess.status, 'idle')) return { error: T(`la session travaille (statut ${psString(sess.status)})`, `the session is working (status ${psString(sess.status)})`), needForce: true };
       let code = 2; try { code = await this.d.driver.call('send', { pid, line: '/exit' }); } catch { /* idem */ }
       if (code === 5) return { error: notEmpty(), needForce: true };
@@ -241,7 +253,7 @@ export class Actions {
   /** Test-Closable : même règle que la page (closable dans app.js). */
   static closable(s: Session): boolean {
     const g = s.git; const merged = !!s.prInfo && ieq(psString(s.prInfo.state), 'MERGED');
-    if (!ieq(s.status, 'idle') || !g) return false;
+    if (!ieq(s.status, 'idle') || !g || Actions.pendingJobs(s).length) return false;
     if (!g.worktree) return merged;
     if ((Number(g.nFiles) || 0) > 0 || (g.upstream && (Number(g.ahead) || 0) > 0)) return false;
     return merged || !!(g.upstream && g.merged);
@@ -254,6 +266,8 @@ export class Actions {
       const id = psIntZero(p);
       const s = all.find((x) => Number(x.pid) === id);
       if (!s) continue;
+      const jobs = Actions.pendingJobs(s).length;
+      if (jobs) { skipped.push({ title: s.title, why: Actions.jobsLost(jobs) }); continue; }
       if (rule === 'idle') { if (!ieq(s.status, 'idle')) { skipped.push({ title: s.title, why: T(`n'est plus inactive (statut ${psString(s.status)})`, `is no longer idle (status ${psString(s.status)})`) }); continue; } }
       else if (!Actions.closable(s)) { skipped.push({ title: s.title, why: T('ne peut plus se fermer (état changé)', 'can no longer be closed (state changed)') }); continue; }
       const r = await this.close(Number(s.pid), false);
@@ -267,6 +281,7 @@ export class Actions {
     const sess = await this.session(pid);
     if (!sess) return T('session introuvable', 'session not found');
     if (!ieq(sess.status, 'idle')) return T(`la session n'est pas inactive (statut ${psString(sess.status)})`, `the session is not idle (status ${psString(sess.status)})`);
+    { const jobs = Actions.pendingJobs(sess).length; if (jobs) return Actions.jobsLost(jobs, true); }
     const m = this.d.meta(sess.sessionId);
     if (!m.path) return T('aucun transcript : la session ne pourrait pas être reprise', 'no transcript: the session could not be resumed');
     if (!m.cwd || !isDir(m.cwd)) return T('dossier de lancement introuvable', 'launch folder not found');
@@ -312,6 +327,7 @@ export class Actions {
       seen.add(pid);
       const skip = (why: string): void => { skipped.push({ title: s.title, why }); };
       if (s.headless) { skip(T('automate sans terminal', 'automation without a terminal')); continue; }
+      { const jobs = Actions.pendingJobs(s).length; if (jobs) { skip(Actions.jobsLost(jobs, true)); continue; } }
       if (!ieq(s.status, 'idle')) { skip(T(`n'est pas inactive (statut ${psString(s.status)})`, `is not idle (status ${psString(s.status)})`)); continue; }
       const m = this.d.meta(s.sessionId);
       if (!m.path) { skip(T('aucun transcript : elle ne pourrait pas être reprise', 'no transcript: it could not be resumed')); continue; }

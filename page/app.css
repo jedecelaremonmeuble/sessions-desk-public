@@ -57,6 +57,10 @@ h1 { font-size:16px; margin:0; } h2 { font-size:13px; margin:22px 0 8px; color:v
 .tw.val { color:var(--done); } .tw.val.ref { color:var(--waiting); } .tw.val.pre { color:var(--ask); }
 .twaits.vals { border-left:2px solid var(--done); padding-left:8px; } .twaits.vals .vh { font-weight:600; }
 .twaits .tw.val.wd { text-decoration:line-through; opacity:.6; } .twaits .tx.q { font-style:italic; }
+/* Tâches programmées par la session (scheduled.ts) : bien visibles, la session ne doit pas être fermée avant. */
+.tw.sched, .twaits .tw.sched { color:var(--shell); font-weight:600; } .tag.sched { color:var(--shell); font-weight:600; }
+.twaits.sched { border-left:3px solid var(--shell); padding:4px 8px; background:color-mix(in srgb, var(--shell) 8%, transparent); border-radius:0 6px 6px 0; }
+.twaits.sched .tx.warn { color:var(--ask); font-weight:600; }
 .twaits .twb { margin-left:8px; display:inline-flex; gap:4px; } .twaits .twb button { font-size:11px; padding:1px 6px; }
 body.ro .twaits .twb { display:none; }
 .chip { font-size:10px; line-height:15px; padding:0 6px; border-radius:999px; border:1px solid currentColor; white-space:nowrap; cursor:pointer; color:var(--mute); }

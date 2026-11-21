@@ -12,6 +12,7 @@ import type { DriverClient } from './driver.ts';
 import { modulesView } from './modules.ts';
 import { lastNewsAt } from './quiet.ts';
 import { pendingQueue, type QueuedPrompt } from './queued.ts';
+import { pendingSchedules, ScheduleScan } from './scheduled.ts';
 import { activeAccountUuid, markActiveAccount, readClaudeUsage, promptSuggestionSetting } from './usage.ts';
 import { isProbeCwd } from './usage-probe.ts';
 import { AskJudge, claudeAskAsync } from './asks-judge.ts';
@@ -168,6 +169,8 @@ export class Dashboard {
   askJudge: AskJudge | null = null;
   /** Brouillons de nouvelle session (drafts.ts) : enregistrés sans être lancés. */
   readonly drafts: Drafts;
+  /** Tâches programmées par les sessions elles-mêmes (scheduled.ts) : lignes utiles de chaque transcript. */
+  readonly schedScan = new ScheduleScan();
   #stamps = new Map<string, number>();
   /** Approbation des dossiers par Claude Code (trust.ts) : lue, jamais écrite. */
   readonly #trust: TrustReader;
@@ -543,6 +546,8 @@ export class Dashboard {
         lastPrompt: pr.length ? pr[pr.length - 1]!.text : '', prompts: pr, suggestion: sug, topicHd: this.topicHd(sid),
         // En file : seulement tant qu'elle travaille (au repos, Claude Code a déjà pris la file).
         queued: ieq(status, 'busy') ? m.queued : [],
+        // Tâches qu'elle s'est programmées (CronCreate, ScheduleWakeup) et qui attendent encore : la fermer les annule.
+        scheduled: m.path && !headless ? pendingSchedules(this.schedScan.lines(m.path), now, Number(s.startedAt) || 0) : [],
         // Verdict du juge (« attend l'utilisateur ? ») sur une session au repos : absent tant qu'il n'est pas rendu.
         ...(this.askJudge && !headless && (ieq(status, 'idle') || ieq(status, 'shell')) ? { askVerdict: this.askJudge.verdict(sid, m.reply) } : {}),
       } as Session);
