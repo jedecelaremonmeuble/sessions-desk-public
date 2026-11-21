@@ -65,6 +65,13 @@ describe('garde du lancement', () => {
     expect(await a.newSession(declared, '', '', '')).toBeNull();
     expect(calls).toEqual([['wt', { args: expect.stringContaining(`nt -d "${declared}" `) }]]);
   });
+  test('identifiant donné (celui que la page sélectionnera) : passé à claude par --session-id', async () => {
+    const { a, calls } = make(withDeclaredFolders([], [declared], () => true));
+    const sid = '11111111-2222-4333-8444-555555555555';
+    expect(await a.newSession(declared, '', '', '', '', undefined, sid)).toBeNull();
+    const args = (calls[0]![1] as { args: string }).args, b64 = args.split('-EncodedCommand ')[1]!;
+    expect(Buffer.from(b64, 'base64').toString('utf16le')).toContain(`--session-id ${sid}`);
+  });
   test('dossier ni récent ni déclaré : toujours refusé', async () => {
     const { a, calls } = make(withDeclaredFolders([], [declared], () => true));
     expect(await a.newSession(join(dir, 'ailleurs'), '', '', '')).toBe('dossier non proposé');

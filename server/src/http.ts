@@ -731,10 +731,12 @@ export class Server {
           const j = await payload();
           if (!isObjBody(j)) { status = 400; body = '{}'; }
           else {
-            const error = await this.actions.newSession(psString(pget(j, 'cwd')), psString(pget(j, 'prompt')), psString(pget(j, 'model')), psString(pget(j, 'branch')), psString(pget(j, 'forkFrom')), pget(j, 'tags'), psString(pget(j, 'sessionId')));
+            // Identifiant fixé ici quand l'appelant n'en donne pas : la page le reçoit et sélectionne la session dès qu'elle apparaît.
+            const sessionId = psString(pget(j, 'sessionId')).trim() || randomUUID();
+            const error = await this.actions.newSession(psString(pget(j, 'cwd')), psString(pget(j, 'prompt')), psString(pget(j, 'model')), psString(pget(j, 'branch')), psString(pget(j, 'forkFrom')), pget(j, 'tags'), sessionId);
             const draftId = psString(pget(j, 'draftId'));
             if (!error && draftId) this.d.drafts.remove(draftId);   // lancée depuis un brouillon : il a servi
-            body = JSON.stringify({ error });
+            body = JSON.stringify(error ? { error } : { error, sessionId });
           }
           break;
         }

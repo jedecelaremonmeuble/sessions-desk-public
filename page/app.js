@@ -3298,7 +3298,10 @@ async function launchNew() {
   try {
     const r = await (await fetch('/api/new', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ cwd: cwd.value, prompt, model: mo.value.trim(), branch: br.value.trim(), forkFrom: newFork ? newFork.sessionId : '', tags: newTags, draftId: newPrefill && newPrefill.draft ? newPrefill.draft.id : '' }) })).json();
     if (r.error) say(T('non lancée : ', 'not launched: ') + r.error);
-    else { clearAttachments('new'); localStorage.setItem('cc.newcwd', cwd.value); localStorage.setItem('cc.newmodel', mo.value.trim()); if (newPrefill && newPrefill.draft) tick(); say(br.value.trim() ? T('onglet ouvert : création du worktree puis lancement (suivre dans l’onglet)', 'tab opened: creating the worktree then launching (follow in the tab)') : T('nouvel onglet ouvert — la session apparaît dans quelques secondes', 'new tab opened — the session appears in a few seconds')); launching = false; closeNew(); return; }
+    else { clearAttachments('new'); localStorage.setItem('cc.newcwd', cwd.value); localStorage.setItem('cc.newmodel', mo.value.trim()); if (newPrefill && newPrefill.draft) tick(); const wt = !!br.value.trim(); launching = false; closeNew();
+      // La page va à la nouvelle session : sélectionnée tout de suite, gardée (pas « disparue ») le temps qu'elle apparaisse.
+      if (r.sessionId) { relaunching = { key: r.sessionId, until: Date.now() + (wt ? 180000 : 90000) }; select(r.sessionId); }
+      say(wt ? T('onglet ouvert : création du worktree puis lancement — la page l’affiche dès qu’elle apparaît', 'tab opened: creating the worktree then launching — the page shows it as soon as it appears') : T('nouvel onglet ouvert — la page affiche la session dès qu’elle apparaît', 'new tab opened — the page shows the session as soon as it appears')); return; }
   } catch { say(T('échec de la demande', 'request failed')); }
   launching = false; if ($('nf-go')) $('nf-go').disabled = false;
 }
