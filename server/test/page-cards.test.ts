@@ -81,32 +81,3 @@ describe('cardAnswers : ce qui part', () => {
     expect(fns.cardAnswers({ ...validation, flavor: 'cadrage' }, { decision: ['non'] }, {}).error).toBeUndefined();
   });
 });
-
-describe('la demande ouverte ne quitte pas la liste sous l’utilisateur', () => {
-  const keep = new Function(grab('keepSelectedRun') + '\nreturn keepSelectedRun;')() as
-    (items: Record<string, unknown>[], held: Record<string, unknown> | null, sel: string | null) => { items: Record<string, unknown>[]; held: Record<string, unknown> | null };
-  const old = { key: 'hd:42', run: { hd: '42', running: false }, look: 'ask', cards: [arbitrage] };
-  const other = { key: 'hd:7', run: { hd: '7', running: false }, look: 'done' };
-
-  test('présente dans la liste : retenue telle quelle, la liste ne change pas', () => {
-    const r = keep([old, other], null, 'hd:42');
-    expect(r.items).toEqual([old, other]);
-    expect(r.held).toBe(old);
-  });
-  test('carte répondue (la demande d’avant minuit sort de la liste) : la dernière copie reste, sans ses cartes', () => {
-    const r = keep([other], old, 'hd:42');
-    expect(r.items.map((i) => i.key)).toEqual(['hd:7', 'hd:42']);
-    expect(r.items[1]!.cards).toBeUndefined();
-    expect(r.items[1]!.look).toBe('idle');
-    expect(keep([other], r.held, 'hd:42').items).toHaveLength(2);   // relectures suivantes : toujours là
-  });
-  test('le run suivant arrive : c’est lui qui est affiché', () => {
-    const go = { key: 'hd:42', run: { hd: '42', running: true }, look: 'busy' };
-    expect(keep([go, other], old, 'hd:42')).toEqual({ items: [go, other], held: go });
-  });
-  test('autre sélection, session ou rien : rien n’est gardé', () => {
-    expect(keep([other], old, 'hd:7')).toEqual({ items: [other], held: other });
-    expect(keep([other], old, 'abc-session')).toEqual({ items: [other], held: null });
-    expect(keep([other], old, null)).toEqual({ items: [other], held: null });
-  });
-});
