@@ -291,6 +291,7 @@ export class Actions {
     if (code === 5) return notEmpty();
     if (was && (code !== 0 || !await waitExit(pid, 15000))) { kill(pid); if (!await waitExit(pid, 5000)) return T("le process n'a pas pu être arrêté", 'the process could not be stopped'); }
     try { rmSync(join(this.d.sessionsDir, `${pid}.json`), { force: true }); } catch { /* idem */ }
+    this.reopening.delete(sess.sessionId);   // elle était ouverte à l'instant : une réouverture d'avant est terminée
     return this.reopen(sess.sessionId);
   }
 
@@ -388,30 +389,46 @@ export class Actions {
   resumeTab(id: string, cwd: string): string { return `nt -d "${cwd}" pwsh -NoExit -Command "claude ${this.d.cfg.claudeArgs} --resume ${id}"`; }
   async wt(args: string): Promise<void> { await this.d.driver.call('wt', { args }); }
 
+  /** Réouvertures lancées (sessionId → ms) dont la session n'est pas encore listée. Une session met quelques secondes à
+   *  apparaître après son onglet : sans ce relevé, deux demandes rapprochées (suivi Teams avec deux attentes sur la même
+   *  session, double clic) passaient toutes deux le contrôle « déjà ouverte » et ouvraient DEUX process sur la même
+   *  conversation. */
+  readonly reopening = new Map<string, number>();
+  reopenGraceMs = 60_000;
+  /** Réouverture à refuser : déjà ouverte, ou demandée il y a moins de reopenGraceMs et pas encore apparue. */
+  #reopenBlocked(id: string, open: Set<string>, now: number): string | null {
+    if (open.has(id)) { this.reopening.delete(id); return T('session déjà ouverte', 'session already open'); }
+    const at = this.reopening.get(id);
+    if (at !== undefined && now - at < this.reopenGraceMs) return T('réouverture déjà en cours', 'reopen already in progress');
+    return null;
+  }
   /** Invoke-Reopen : nouvel onglet de la fenêtre Windows Terminal la plus récente. */
   async reopen(id: string): Promise<string | null> {
     if (!GUID.test(id)) return T('identifiant invalide', 'invalid id');
-    if ((await this.d.openSessions()).some((s) => s.sessionId === id)) return T('session déjà ouverte', 'session already open');
+    const now = Date.now();
+    { const why = this.#reopenBlocked(id, new Set((await this.d.openSessions()).map((s) => s.sessionId)), now); if (why) return why; }
     const m = this.d.meta(id);
     if (!m.path) return T('transcript introuvable', 'transcript not found');
     if (!m.cwd || !isDir(m.cwd)) return T('dossier de lancement introuvable', 'launch folder not found');
     if (m.cwd.includes(';')) return semicolonRefused();
-    await this.wt(`-w 0 ${this.resumeTab(id, m.cwd)}`);
+    this.reopening.set(id, now);
+    try { await this.wt(`-w 0 ${this.resumeTab(id, m.cwd)}`); } catch (e) { this.reopening.delete(id); throw e; }
     return null;
   }
   /** Invoke-ReopenMany : UN seul appel à Windows Terminal, un onglet par session. */
   async reopenMany(ids: unknown): Promise<Record<string, unknown>> {
-    const open = new Set((await this.d.openSessions()).map((s) => s.sessionId));
-    const tabs: string[] = []; let skipped = 0;
+    const open = new Set((await this.d.openSessions()).map((s) => s.sessionId)), now = Date.now();
+    const tabs: string[] = [], ids2: string[] = []; let skipped = 0;
     for (const raw of psArray(ids).slice(0, 40)) {
       const id = psString(raw);
-      if (!GUID.test(id) || open.has(id)) { skipped++; continue; }
+      if (!GUID.test(id) || ids2.includes(id) || this.#reopenBlocked(id, open, now)) { skipped++; continue; }
       const m = this.d.meta(id);
       if (!m.path || !m.cwd || !isDir(m.cwd) || m.cwd.includes(';')) { skipped++; continue; }
-      tabs.push(this.resumeTab(id, m.cwd));
+      tabs.push(this.resumeTab(id, m.cwd)); ids2.push(id);
     }
     if (!tabs.length) return { error: T('aucune session à rouvrir', 'no session to reopen'), opened: 0, skipped };
-    await this.wt('-w 0 ' + tabs.join(' ; '));
+    for (const id of ids2) this.reopening.set(id, now);
+    try { await this.wt('-w 0 ' + tabs.join(' ; ')); } catch (e) { for (const id of ids2) this.reopening.delete(id); throw e; }
     return { error: null, opened: tabs.length, skipped };
   }
 

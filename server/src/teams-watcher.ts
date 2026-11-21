@@ -1873,6 +1873,9 @@ export async function runPass(dir: string, cfg: WatcherConfig, opts: PassOptions
   // null = serveur 8765 injoignable : on ne rouvre RIEN sur une liste vide qui ne veut rien dire.
   let sessions: OpenSession[] | null | undefined;
   const getSessions = async (): Promise<OpenSession[] | null> => (sessions === undefined ? (sessions = await openSessions(cfg).catch(() => null)) : sessions);
+  // Sessions rouvertes PENDANT cette passe : une session fermée avec plusieurs attentes (réponse + relance) n'est
+  // rouverte qu'une fois — sinon chaque attente lançait son onglet et la conversation tournait dans deux process.
+  const reopenedNow = new Set<string>();
   /** Remet un texte à la session : directement si elle est prête, après réouverture si elle est fermée (D5), plus tard si elle travaille. */
   const deliver = async (w: Wait, text: string): Promise<{ w: Wait; ok: boolean }> => {
     const list = await getSessions();
@@ -1881,9 +1884,10 @@ export async function runPass(dir: string, cfg: WatcherConfig, opts: PassOptions
     if (s?.headless) return { w: { ...w, lastError: 'automate (claude -p) : exclu' }, ok: false };
     if (!s) {
       if (w.reopenedAt && now - w.reopenedAt < REOPEN_MS) return { w: { ...w, lastError: 'réouverture en cours' }, ok: false };
+      if (reopenedNow.has(w.sessionId)) return { w: { ...w, reopenedAt: now, lastError: 'réouverture en cours' }, ok: false };
       if ((w.reopens ?? 0) >= MAX_REOPENS) return { w: { ...w, lastError: 'session fermée (rouverte deux fois sans démarrer)' }, ok: false };
       const err = await reopen(cfg, w.sessionId).catch((e: Error) => e.message);
-      if (!err) res.reopened++;
+      if (!err) { res.reopened++; reopenedNow.add(w.sessionId); }
       return { w: { ...w, reopenedAt: now, reopens: (w.reopens ?? 0) + 1, lastError: err ? `réouverture impossible : ${err}` : 'réouverture en cours' }, ok: false };
     }
     if (s.status !== 'idle' && s.status !== 'shell') return { w: { ...w, lastError: `session ${s.status}` }, ok: false };
