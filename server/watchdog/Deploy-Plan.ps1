@@ -122,3 +122,34 @@ function Exit-DeployLock($Lock) {
     try { $Lock.ReleaseMutex() } catch { }
     $Lock.Dispose()
 }
+
+# ── Mise à jour automatique (Auto-Update.ps1) : décisions pures ──
+
+<# Contrôles d'un commit (check-runs de l'API GitHub) → 'ok' (tous terminés et verts), 'pending', 'failed', ou
+   'unknown' (aucun contrôle connu : on ne déploie pas un commit dont on ne sait rien). #>
+function Get-ChecksVerdict($Runs) {
+    $list = @($Runs | Where-Object { $_ })
+    if (-not $list.Count) { return 'unknown' }
+    if ($list | Where-Object { "$($_.status)" -ne 'completed' }) { return 'pending' }
+    if ($list | Where-Object { "$($_.conclusion)" -notin @('success', 'skipped', 'neutral') }) { return 'failed' }
+    return 'ok'
+}
+
+<# Que fait une passe ? Action 'none' (à jour), 'update', 'wait' (réessayer à la passe suivante) ou 'refuse' (le poste
+   n'est pas dans un état où l'on met à jour seul), avec sa raison. $Deployed : commit en service ($null : inconnu) ;
+   $DeployedOnMain : ce commit est-il un ancêtre de $Remote ? #>
+function Get-UpdateDecision([string]$Branch, [bool]$Dirty, [int]$Ahead, [string]$Remote, [string]$Deployed, [bool]$DeployedOnMain, [string]$Checks) {
+    $r = { param($a, $w) [pscustomobject]@{ Action = $a; Why = $w } }
+    if ($Deployed -and $Deployed -eq $Remote) { return & $r 'none' 'déjà sur main' }
+    if ($Branch -ne 'main') { return & $r 'refuse' "clone sur la branche « $Branch », pas main" }
+    if ($Dirty) { return & $r 'refuse' 'modifications non commitées dans le clone' }
+    if ($Ahead -gt 0) { return & $r 'refuse' "$Ahead commit(s) local(aux) absents de main" }
+    if ($Deployed -and -not $DeployedOnMain) { return & $r 'refuse' "la version en service ($($Deployed.Substring(0, 10))) ne vient pas de main : posée à la main, jamais écrasée" }
+    $to = $Remote.Substring(0, [math]::Min(10, $Remote.Length))
+    switch ($Checks) {
+        'ok' { return & $r 'update' "main est passé à $to, contrôles verts" }
+        'pending' { return & $r 'wait' "contrôles de $to encore en cours" }
+        'failed' { return & $r 'wait' "contrôles de $to en échec : main n'est pas déployé" }
+        default { return & $r 'wait' "contrôles de $to illisibles (réseau, quota de l'API, ou aucun contrôle)" }
+    }
+}

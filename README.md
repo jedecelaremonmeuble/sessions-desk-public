@@ -220,6 +220,19 @@ sign the machine is overloaded), the deployment gives up before stopping anythin
 If the new server has not answered after 90 s, it is stopped, the previous copy is put back and restarted, and the
 deployment fails; the failed copy is kept in `node-<port>.failed`.
 
+### Keeping machines up to date
+
+A machine runs a copy of one commit and does not follow `main` by itself. `server/watchdog/Auto-Update.ps1 -Install`
+registers an hourly scheduled task that does it: when `main` has moved and **all its checks are green**, it
+fast-forwards the clone and runs `Deploy.ps1` (with `-ServerOnly` on a machine where only the server was installed).
+It does nothing, and says why, when the clone is not on `main`, has local changes or commits, or when the running
+version was deployed by hand from another branch. `-DryRun` tells what a pass would do, `-Uninstall` removes the
+task. The last decision is in `%LOCALAPPDATA%\sessions-desk\auto-update.txt`; updates are logged with the
+deployments.
+
+Turn it on only for a repository where you alone can push to `main`: the machine will run whatever lands there,
+unreviewed. A fork is the natural place for that.
+
 The server keeps its own performance trace in `%TEMP%\sessions-desk-node-<port>.perf.log` (moved to `.old` past
 1 MB): one line per start with the time spent in each phase up to the first computed state (marked `LENT` past
 5 s), and one line per event-loop stall longer than 2 s. Stalls are spotted from a worker thread, so a stall that

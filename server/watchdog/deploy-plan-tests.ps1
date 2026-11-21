@@ -140,5 +140,26 @@ Check 'préparation trop longue sous -Force ⇒ on déploie' (-not (Test-Prepare
 Check 'préparation trop longue, aucun serveur en service ⇒ on déploie' (-not (Test-PrepareTooSlow 80.4 20 $false $false))
 Check 'limite à 0 ⇒ jamais de renoncement' (-not (Test-PrepareTooSlow 80.4 0 $false $true))
 
+# ── Mise à jour automatique : décisions ──
+$A = 'a' * 40; $B = 'b' * 40
+$run = { param($s, $c) [pscustomobject]@{ status = $s; conclusion = $c } }
+Check 'contrôles : tous verts ⇒ ok' ((Get-ChecksVerdict @((& $run 'completed' 'success'), (& $run 'completed' 'skipped'))) -eq 'ok')
+Check 'contrôles : un en cours ⇒ pending' ((Get-ChecksVerdict @((& $run 'completed' 'success'), (& $run 'in_progress' $null))) -eq 'pending')
+Check 'contrôles : un rouge ⇒ failed' ((Get-ChecksVerdict @((& $run 'completed' 'success'), (& $run 'completed' 'failure'))) -eq 'failed')
+Check 'contrôles : un annulé ⇒ failed' ((Get-ChecksVerdict @((& $run 'completed' 'cancelled'))) -eq 'failed')
+Check 'contrôles : aucun ⇒ unknown (on ne déploie pas sans savoir)' ((Get-ChecksVerdict @()) -eq 'unknown')
+$dec = { param($over) $p = @{ Branch = 'main'; Dirty = $false; Ahead = 0; Remote = $B; Deployed = $A; DeployedOnMain = $true; Checks = 'ok' }; foreach ($k in $over.Keys) { $p[$k] = $over[$k] }; (Get-UpdateDecision @p).Action }
+Check 'mise à jour : main a avancé, contrôles verts ⇒ update' ((& $dec @{}) -eq 'update')
+Check 'mise à jour : déjà sur main ⇒ none, quel que soit le reste' ((& $dec @{ Deployed = $B; Branch = 'autre'; Dirty = $true; Checks = 'failed' }) -eq 'none')
+Check 'mise à jour : contrôles en cours ⇒ wait' ((& $dec @{ Checks = 'pending' }) -eq 'wait')
+Check 'mise à jour : contrôles rouges ⇒ wait, jamais déployé' ((& $dec @{ Checks = 'failed' }) -eq 'wait')
+Check 'mise à jour : contrôles illisibles ⇒ wait' ((& $dec @{ Checks = 'unknown' }) -eq 'wait')
+Check 'mise à jour : clone sur une autre branche ⇒ refuse' ((& $dec @{ Branch = 'feat/x' }) -eq 'refuse')
+Check 'mise à jour : clone modifié ⇒ refuse' ((& $dec @{ Dirty = $true }) -eq 'refuse')
+Check 'mise à jour : commits locaux ⇒ refuse' ((& $dec @{ Ahead = 2 }) -eq 'refuse')
+Check 'mise à jour : version en service hors de main ⇒ refuse (posée à la main)' ((& $dec @{ DeployedOnMain = $false }) -eq 'refuse')
+Check 'mise à jour : commit en service inconnu, contrôles verts ⇒ update' ((& $dec @{ Deployed = '' }) -eq 'update')
+Check 'mise à jour : la raison nomme le commit visé' ((Get-UpdateDecision -Branch main -Dirty $false -Ahead 0 -Remote $B -Deployed $A -DeployedOnMain $true -Checks ok).Why -match 'bbbbbbbbbb')
+
 if ($script:fail) { Write-Host "$($script:fail) échec(s)"; exit 1 }
 Write-Host 'tous les tests passent'
