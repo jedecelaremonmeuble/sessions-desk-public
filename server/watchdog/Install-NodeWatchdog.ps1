@@ -188,6 +188,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'compilation du pilote en échec' }
     Set-Content (Join-Path $stage 'DEPLOYED.txt') @(
         "commit $sha$(if ($onMain) { ' (origin/main)' } else { ' (PAS origin/main)' })"
+        "version $(Get-CommitVersion $repo $sha)"
         "posé le $(Get-Date -Format s) depuis $repo"
         "node $node ($v)"
         "mode $role"

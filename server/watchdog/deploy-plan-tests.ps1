@@ -42,6 +42,13 @@ if ((& $have '681f35c') -and (& $have 'ecb83b3') -and (& $have 'e56ea97') -and (
 } else { Write-Host 'skip historique (clone incomplet)' }
 Check 'retard : commit en service inconnu ⇒ non' (-not (Test-BehindRunning $repo 'abc' $null))
 
+# ── Version d'un commit ──
+$rank = { param($c) [int]((Get-CommitVersion $repo (git -C $repo rev-parse $c).Trim()) -replace '^\d+\.\d+\.(\d+).*', '$1') }
+$v = Get-CommitVersion $repo (git -C $repo rev-parse HEAD).Trim()
+Check 'version : majeur.mineur.rang (+sha hors de main)' ($v -match '^\d+\.\d+\.\d+(\+[0-9a-f]{7})?$') $v
+Check 'version : le rang est le nombre de commits' ((& $rank 'HEAD') -eq [int](git -C $repo rev-list --count HEAD)) $v
+if (& $have '681f35c') { Check 'version : un commit plus ancien a un rang plus petit' ((& $rank '681f35c') -lt (& $rank 'HEAD')) }
+
 # ── DEPLOYED.txt ──
 $fake = (New-Item -ItemType Directory -Force (Join-Path ([IO.Path]::GetTempPath()) "sd-deploy-plan-$PID")).FullName
 try {
@@ -66,6 +73,10 @@ try {
         Check 'fichier disparu du commit retiré' (-not (Test-Path (Join-Path $fake 'page\obsolete.js')))
         Check 'aucun .tmp ni page.new laissé' (-not (Get-ChildItem $fake -Recurse -Filter '*.tmp') -and -not (Test-Path (Join-Path $fake 'page.new')))
         Check 'DEPLOYED.txt pointe le nouveau commit' ((Get-DeployedCommit $fake) -eq $to)
+        $ver = "version $(Get-CommitVersion $repo $to)"
+        Check 'DEPLOYED.txt porte la version du nouveau commit, en 2e ligne' ((Get-Content (Join-Path $fake 'DEPLOYED.txt'))[1] -eq $ver) $ver
+        Update-RunCopy -Repo $repo -Head $to -RunDir $fake -Plan 'none' -Running $from
+        Check 'une seule ligne « version » après deux passes' (@(Get-Content (Join-Path $fake 'DEPLOYED.txt') | Where-Object { $_ -match '^version ' }).Count -eq 1)
         Check 'DEPLOYED.txt garde le commit de démarrage du serveur' ((Get-Content (Join-Path $fake 'DEPLOYED.txt') -Raw) -match "page remplacée à chaud .*serveur démarré sur $($from.Substring(0, 10))")
 
         # ── Page qui ne se compile pas (2920d69 : retours à la ligne bruts dans une chaîne d'app.js) : refusée ──

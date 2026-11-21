@@ -265,6 +265,9 @@ and the Teams watcher to `~/.claude/scripts`, creating their scheduled tasks on 
 When only `page/` changed since the running commit, it swaps the page files in place instead of restarting the
 server: no downtime, and open pages reload themselves (`-Restart` forces a restart; decision and tests in
 `server/watchdog/Deploy-Plan.ps1` and `deploy-plan-tests.ps1`).
+The page shows the running version next to its title (commit in the tooltip). Nobody bumps it: it is the
+major.minor of `server/package.json` followed by the number of commits up to the deployed one, so each merge into
+`main` adds one (`0.1.72`). A commit that is not on `main` gets a `+<short sha>` suffix, a development checkout `-dev`.
 Only one deployment runs at a time: a second one waits, then starts again from whatever the first one put in
 service. A clone that is behind the running commit is refused (`-Rollback` to go back on purpose). The server is
 first asked to stop cleanly (`/api/stop`: it finishes what it has received), and is killed only if it does not exit.

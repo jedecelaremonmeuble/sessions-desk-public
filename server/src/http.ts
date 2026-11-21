@@ -30,6 +30,7 @@ import { upload } from './upload.ts';
 import { readImage } from './image.ts';
 import { addContent, exists, GUID, ieq, nowMs, psArray, psIntZero, psString, psTruthy, sleep, tryParseInt, tryParseUInt } from './util.ts';
 import { Watch } from './watch.ts';
+import { versionReader } from './version.ts';
 import { setPhase } from './stall.ts';
 import { DeliveryKick, linkedPending, type KickSession, type KickSummary } from './teams-kick.ts';
 import { spawn } from 'node:child_process';
@@ -39,6 +40,8 @@ import { applyAction, conversationThread, conversationsView, linkConversation, m
 
 /** Identifiant de CE démarrage du serveur : la page sait ainsi qu'il a redémarré, même entre deux lectures. */
 const BOOT = `${Date.now().toString(36)}-${process.pid}`;
+/** Version en service : celle du dossier d'où tourne ce serveur (copie déployée ou checkout). */
+const VERSION = versionReader(fileURLToPath(new URL('../..', import.meta.url)));
 const PAGE: Record<string, [string, string]> = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
@@ -437,9 +440,9 @@ export class Server {
     if (peer.op === 'image') res.setHeader('X-Content-Type-Options', 'nosniff');
     reply(res, r.status, r.type, r.body);
   }
-  /** Ce que le serveur ajoute à l'état calculé : son démarrage, la page servie, le relais, et les autres postes. */
+  /** Ce que le serveur ajoute à l'état calculé : son démarrage, la page servie, sa version, le relais, et les autres postes. */
   #stateJson(st: object, now: number): string {
-    return JSON.stringify({ ...st, server: { boot: BOOT, page: this.#pageVersion(), relay: this.cfg.primary ? this.relayHealth() : null },
+    return JSON.stringify({ ...st, server: { boot: BOOT, page: this.#pageVersion(), ...VERSION(), relay: this.cfg.primary ? this.relayHealth() : null },
       ...(this.peers.enabled ? { peers: this.peers.view(now) } : {}) });
   }
 
