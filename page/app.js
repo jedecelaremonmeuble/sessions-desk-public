@@ -1140,7 +1140,7 @@ function pickRun(it) {
   const dir = runPick.get(it.key), sub = dir && it.runs.find(r => r.run.dir === dir);
   return sub && sub.run.dir !== it.run.dir ? { ...sub, key: it.key, runs: it.runs, runCount: it.runCount, phases: it.phases, costTotal: it.costTotal, picked: true } : it;
 }
-let runData = null, runTimer = null, runsRead = false;   // runsRead : 1re lecture faite (une adresse ?sel=hd:… attend jusque-là)
+let runData = null, runTimer = null, runsRead = false, heldRun = null;   // runsRead : 1re lecture faite (une adresse ?sel=hd:… attend jusque-là)
 const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 // Module « launcher » éteint (le serveur le dit dans data.modules ; le .ps1 ne dit rien : il l'a toujours).
 const launcherOff = () => !!(data && data.modules && !data.modules.launcher);
@@ -1166,8 +1166,24 @@ const runGroup = () => {
   const g = launcherGroup(runs, waiting, open, midnight());
   // Une carte qui attend garde sa demande dans la liste, même si son dernier run date d'avant minuit.
   const old = cardRuns(runs, cards, midnight()), g2 = old.length ? launcherGroup(old, waiting, open, 0) : { items: [] };
-  return { items: withCards(runsByHd(g.items.concat(g2.items)), cards), absorbed: g.absorbed };
+  const k = keepSelectedRun(withCards(runsByHd(g.items.concat(g2.items)), cards), heldRun, selected);
+  heldRun = k.held;
+  return { items: k.items, absorbed: g.absorbed };
 };
+// La demande OUVERTE dans le détail ne quitte pas la liste sous l'utilisateur. Une demande dont le dernier run date
+// d'avant minuit n'y tient que par sa carte : la carte répondue (ou le feu vert donné), elle en sortait, la sélection
+// tombait et la page revenait à la vue d'ensemble, le temps que le run suivant apparaisse. On garde la dernière copie
+// vue de la demande sélectionnée (sans ses cartes, déjà traitées) jusqu'à ce que le lanceur la renvoie ou qu'on en
+// sélectionne une autre. PURE (testée par server/test/page-cards.test.ts).
+function keepSelectedRun(items, held, sel) {
+  if (!sel || !String(sel).startsWith('hd:')) return { items, held: null };
+  const cur = items.find(i => i.key === sel);
+  if (cur) return { items, held: cur };
+  if (!held || held.key !== sel) return { items, held: null };
+  const { cards, ...rest } = held;
+  const kept = { ...rest, look: rest.run && rest.run.running ? rest.look : 'idle' };
+  return { items: items.concat(kept), held: kept };
+}
 const money = v => (Math.round(v * 100) / 100).toLocaleString(LOCALE) + ' $';
 // ── Passes des AUTOMATES du poste (module « automations ») : scripts planifiés déclarés dans la configuration du
 // poste. Un groupe par automate dans la liste (la passe en cours et la DERNIÈRE passe du jour qui a agi ou échoué), une carte
@@ -1669,6 +1685,10 @@ function runOrders(phase, stage, pr) {
   // un « go » n'a plus de sens (il proposait de relancer un dev sur un correctif déjà en production).
   if (!stage && ['merge', 'production', 'doc'].includes(phase)) return [];
   const dead = ['dev-abandoned', 'dev-failed', 'pr-closed'].includes(stage);
+  // Run `go` : le feu vert est DÉJÀ donné, le correctif est en file jusqu'au run dev. Le reproposer (une carte de
+  // validation qui le masquait, une fois répondue, le laissait reparaître) faisait croire qu'il restait à donner.
+  // Seul un dev mort (échec, abandon, PR fermée) rend un nouveau go sensé.
+  if (phase === 'go' && !dead) return [];
   const prSide = !dead && (stage === 'pr-awaiting-approval' || !!pr || ['dev', 'relecture', 'recette', 'reprise'].includes(phase));
   const o = prSide ? ['merge', 'review', 'recette-skip', 'rework'] : ['go'];
   if (['diagnostic', 'suite', 'relance', 'reveil'].includes(phase)) o.push('verdict');
@@ -2131,6 +2151,33 @@ function machineTag(it) {
   t.onclick = e => { e.stopPropagation(); const q = $('q'), tok = 'poste:' + it.machine; q.value = norm(q.value).split(/\s+/).includes(tok) ? q.value.split(/\s+/).filter(x => norm(x) !== tok).join(' ') : (q.value.trim() + ' ' + tok).trim(); renderList(); };
   return t;
 }
+// La liste se reconstruit à chaque rendu (toutes les 1 à 2 s). Remplacer ses nœuds perdait des clics : appui sur un
+// en-tête, rendu, relâché sur le nouvel en-tête — le navigateur n'envoie pas de click (appui et relâché sur deux
+// nœuds différents). On construit hors du document puis on REPORTE sur les nœuds en place : un nœud qui a la même
+// clé (data-key : ligne ou en-tête de groupe) ou, sans clé, la même balise au même rang est gardé et mis à jour
+// (attributs, texte, gestionnaires on…). PURE côté logique, testée par server/test/morph-page.test.ts.
+const MORPH_HANDLERS = ['onclick', 'ondblclick', 'onmousedown', 'onmouseup', 'onpointerdown', 'onchange', 'oninput', 'onkeydown'];
+function morphChildren(cur, next) {
+  const keyOf = n => n.nodeType === 1 && n.dataset && n.dataset.key || '';
+  const same = (o, n) => o.nodeType === n.nodeType && (o.nodeType !== 1 || o.tagName === n.tagName);
+  const keyed = new Map();
+  for (const c of cur.childNodes) { const k = keyOf(c); if (k && !keyed.has(k)) keyed.set(k, c); }
+  let at = cur.firstChild;
+  for (const n of [...next.childNodes]) {
+    const k = keyOf(n);
+    let o = k ? keyed.get(k) : at && !keyOf(at) && same(at, n) ? at : null;
+    if (k) keyed.delete(k);
+    if (!o || !same(o, n)) { cur.insertBefore(n, at); continue; }
+    if (o === at) at = at.nextSibling; else cur.insertBefore(o, at);
+    if (o.nodeType !== 1) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; continue; }
+    for (const a of [...o.attributes]) if (!n.hasAttribute(a.name)) o.removeAttribute(a.name);
+    for (const a of n.attributes) if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value);
+    for (const h of MORPH_HANDLERS) if (o[h] !== n[h]) o[h] = n[h];
+    if ('checked' in n && o.checked !== n.checked) o.checked = n.checked;
+    morphChildren(o, n);
+  }
+  while (at) { const nx = at.nextSibling; at.remove(); at = nx; }
+}
 function renderList() {
   spinPhase();
   const tokens = norm($('q').value).split(/\s+/).filter(Boolean);
@@ -2140,7 +2187,7 @@ function renderList() {
   $('sortbtn').className = sortMode === 'created' ? 'on' : '';
   $('sortbtn').title = sortMode === 'created' ? T('Trié par date de création (la plus récente d’abord) — clic : par dernière activité', 'Sorted by creation date (newest first) — click: by last activity') : T('Trié par dernière activité — clic : par date de création', 'Sorted by last activity — click: by creation date');
   const expandAll = tokens.length || favOnly;     // recherche ou filtre favoris : on cherche aussi dans les groupes repliés
-  const list = $('list'); list.replaceChildren(); flat = [];
+  const list = el('div'); flat = [];   // construite hors du document, reportée sur #list à la fin (morphChildren)
   if (data.reboot) {               // après un redémarrage de Windows : rappel en tête, la vue d'ensemble propose la réouverture
     const b = el('div', 'rbanner', T('↻ ' + plural(data.reboot.sessions.length, 'session ouverte', 'sessions ouvertes') + ' avant le redémarrage — rouvrir…', '↻ ' + plural(data.reboot.sessions.length, 'session open', 'sessions open') + ' before the restart — reopen…'));
     b.title = T('Afficher la liste dans la vue d\'ensemble', 'Show the list in the overview'); b.onclick = () => select(null); list.append(b);
@@ -2157,6 +2204,7 @@ function renderList() {
     const isCollapsed = !expandAll && collapsed.has('drafts');
     const head = el('div', 'grp');
     head.append(el('span', 'car', isCollapsed ? '▸' : '▾'), el('span', null, T('📝 Brouillons', '📝 Drafts')), el('span', 'n', drafts.length));
+    head.dataset.key = 'g:drafts';
     head.title = T('Nouvelles sessions enregistrées sans être lancées — clic sur une ligne : la relire, la modifier, la lancer', 'New sessions saved without being launched — click a row: read it, edit it, launch it');
     head.onclick = () => { collapsed.has('drafts') ? collapsed.delete('drafts') : collapsed.add('drafts'); localStorage.setItem('cc.collapsed', JSON.stringify([...collapsed])); renderList(); };
     list.append(head);
@@ -2177,6 +2225,7 @@ function renderList() {
       const isCollapsed = collapsed.has('recent');
       const head = el('div', 'grp');
       head.append(el('span', 'car', isCollapsed ? '▸' : '▾'), el('span', null, T('Consultées récemment', 'Recently viewed')), el('span', 'n', rec.length));
+      head.dataset.key = 'g:recent';
       head.title = T('Les dernières sessions ouvertes dans cette page  ( b : revenir à la précédente )', 'The last sessions opened in this page  ( b: back to the previous one )');
       head.onclick = () => { collapsed.has('recent') ? collapsed.delete('recent') : collapsed.add('recent'); localStorage.setItem('cc.collapsed', JSON.stringify([...collapsed])); renderList(); };
       list.append(head);
@@ -2203,7 +2252,7 @@ function renderList() {
     const isCollapsed = !expandAll && collapsed.has(g.key);
     // 🤖 replié : on garde sous les yeux ce qui compte — en cours, en échec, PR qui attend l'utilisateur.
     const urgent = g.key === 'auto' ? rows.filter(it => live(it) || it.look === 'waiting' || it.look === 'ask') : g.auto ? rows.filter(it => live(it) || it.look === 'waiting') : [];
-    const head = el('div', 'grp');
+    const head = el('div', 'grp'); head.dataset.key = 'g:' + g.key;
     const gTitle = g.key === 'auto' ? autoTitle(g.title, rows) : g.auto ? g.title + (autoGroupTitle(g.auto) ? ' — ' + autoGroupTitle(g.auto) : '') : g.title;
     head.append(el('span', 'car', isCollapsed ? '▸' : '▾'), el('span', null, gTitle + (g.key === 'closed' && closedData.days ? T(' · ' + closedData.days + ' j', ' · ' + closedData.days + ' d') : '')), el('span', 'n', rows.length));
     if (g.auto) head.title = T('Passes du jour qui ont agi ou échoué, et la passe en cours. Les passes sans effet sont comptées ici sans ligne. Replié : seulement en cours et en échec.', "Today's passes that acted or failed, and the running pass. Passes with no effect are counted here without a row. Collapsed: only running and failed.") + (g.auto.last ? T('\nDernière passe : ', '\nLast pass: ') + g.auto.last.summary : '');
@@ -2274,6 +2323,7 @@ function renderList() {
     }
   }
   if (!flat.length && expandAll) list.append(el('div', 'grp', favOnly && !tokens.length ? T('Aucun favori — touche f sur une session', 'No favourites — press f on a session') : T('Aucun résultat', 'No results')));
+  morphChildren($('list'), list);
   const unread = data.notifs.filter(nf => nf.at > Number(localStorage.getItem('cc.notifSeen') || 0)).length; $('belln').textContent = unread ? unread : '';
   const todo = allItems().filter(it => TODO.includes(it.state)).length;
   document.title = (todo ? '(' + todo + ') ' : '') + T('Sessions Claude Code', 'Claude Code sessions');
@@ -2519,7 +2569,18 @@ async function closeSession(it) {
   say(T('fermeture de « ' + label(it) + ' »…', 'closing "' + label(it) + '"…'));
   try {
     let r = await post('/api/close?pid=' + it.pid);
-    if (r.needForce) {
+    if (r.needForce && r.jobs) {
+      if (!confirm(T(r.error + '.
+
+' + schedList(it) + '
+
+Fermer quand même ? Elle ne s’exécutera pas.', r.error + '.
+
+' + schedList(it) + '
+
+Close anyway? It will not run.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
+      r = await post('/api/close?pid=' + it.pid + '&force=1');
+    } else if (r.needForce) {
       if (!confirm(T(r.error + '.\n\nL’arrêter de force ? Le travail en cours dans ce tour sera perdu ; la conversation reste reprenable.', r.error + '.\n\nForce it to stop? The work in progress in this turn will be lost; the conversation stays reopenable.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
       r = await post('/api/close?pid=' + it.pid + '&force=1');
     }
@@ -2608,9 +2669,15 @@ function lineKeys(e) {
   const ok = r.insert ? document.execCommand('insertText', false, r.insert) : document.execCommand('delete');
   if (!ok) { t.setRangeText(r.insert, r.from, r.to, 'end'); t.dispatchEvent(new Event('input')); }
 }
+// Zone vide mais texte collé joint : le message EST ce texte. Sans consigne, la session lisait le fichier puis demandait
+// quoi en faire ; on lui dit de le traiter comme s'il avait été tapé (commandes comprises).
 function withAttachments(key, text) {
-  const refs = attList(key).filter(a => a.path).map(a => (a.pasted ? 'Texte collé (' + a.pasted + (a.pasted > 1 ? ' lignes' : ' ligne') + ')' : a.img ? 'Capture' : 'Fichier') + ' : "' + a.path + '"');
-  return [text.trim(), ...refs].filter(Boolean).join(' ');
+  const list = attList(key).filter(a => a.path), typed = text.trim();
+  const refs = list.map(a => (a.pasted ? 'Texte collé (' + a.pasted + (a.pasted > 1 ? ' lignes' : ' ligne') + ')' : a.img ? 'Capture' : 'Fichier') + ' : "' + a.path + '"');
+  const pasted = list.filter(a => a.pasted).length;
+  const lead = !typed && pasted ? (pasted > 1 ? 'Mon message est dans les textes collés joints : lis-les en entier et fais ce qu’ils demandent, comme si je les avais tapés.'
+                                              : 'Mon message est dans le texte collé joint : lis-le en entier et fais ce qu’il demande, comme si je l’avais tapé.') : '';
+  return [typed || lead, ...refs].filter(Boolean).join(' ');
 }
 function clearAttachments(key) { for (const a of attList(key)) if (a.url) URL.revokeObjectURL(a.url); attachSets[key] = []; refreshAttach(key); }
 async function uploadFile(key, file, pasted = 0) {
@@ -3298,7 +3365,10 @@ async function launchNew() {
   try {
     const r = await (await fetch('/api/new', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ cwd: cwd.value, prompt, model: mo.value.trim(), branch: br.value.trim(), forkFrom: newFork ? newFork.sessionId : '', tags: newTags, draftId: newPrefill && newPrefill.draft ? newPrefill.draft.id : '' }) })).json();
     if (r.error) say(T('non lancée : ', 'not launched: ') + r.error);
-    else { clearAttachments('new'); localStorage.setItem('cc.newcwd', cwd.value); localStorage.setItem('cc.newmodel', mo.value.trim()); if (newPrefill && newPrefill.draft) tick(); say(br.value.trim() ? T('onglet ouvert : création du worktree puis lancement (suivre dans l’onglet)', 'tab opened: creating the worktree then launching (follow in the tab)') : T('nouvel onglet ouvert — la session apparaît dans quelques secondes', 'new tab opened — the session appears in a few seconds')); launching = false; closeNew(); return; }
+    else { clearAttachments('new'); localStorage.setItem('cc.newcwd', cwd.value); localStorage.setItem('cc.newmodel', mo.value.trim()); if (newPrefill && newPrefill.draft) tick(); const wt = !!br.value.trim(); launching = false; closeNew();
+      // La page va à la nouvelle session : sélectionnée tout de suite, gardée (pas « disparue ») le temps qu'elle apparaisse.
+      if (r.sessionId) { relaunching = { key: r.sessionId, until: Date.now() + (wt ? 180000 : 90000) }; select(r.sessionId); }
+      say(wt ? T('onglet ouvert : création du worktree puis lancement — la page l’affiche dès qu’elle apparaît', 'tab opened: creating the worktree then launching — the page shows it as soon as it appears') : T('nouvel onglet ouvert — la page affiche la session dès qu’elle apparaît', 'new tab opened — the page shows the session as soon as it appears')); return; }
   } catch { say(T('échec de la demande', 'request failed')); }
   launching = false; if ($('nf-go')) $('nf-go').disabled = false;
 }
