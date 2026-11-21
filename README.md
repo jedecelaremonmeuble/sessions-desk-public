@@ -300,6 +300,12 @@ antivirus, overloaded machine), not running our code. A stall also names the syn
 it began (a file being read, a program being started), or says that none was; a synchronous call that takes more
 than 500 ms has its own line (`appel lent`), even when it stays under the stall threshold.
 
+Opening a file can wait for seconds when the antivirus is saturated, and the files the server reads every second are
+the ones other processes keep rewriting. The files read to compute the state are therefore opened by reader threads,
+and the server waits at most 100 ms for them: past that, a small state file keeps its previous content and a
+transcript keeps what was known of it, until the read ends in the background (`lecture lente` and
+`lecture lente finie` lines in the same trace).
+
 ## Keyboard shortcuts
 
 `/` search · `n` next session that needs you · `r` reply · `p` take the suggested prompt · `h` screen /

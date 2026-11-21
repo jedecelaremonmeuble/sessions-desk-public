@@ -10,6 +10,7 @@ import { DriverClient } from './driver.ts';
 import { Server } from './http.ts';
 import { Dashboard } from './state.ts';
 import { purgeUploads } from './upload.ts';
+import { startReadGuard } from './slowfs.ts';
 import { perfLine, startStallWatch, startupLine, traceSyncOps } from './stall.ts';
 import { registerFocusProtocol } from './watch.ts';
 
@@ -22,6 +23,7 @@ export async function start(argv: string[]): Promise<Server> {
   const perf = join(cfg.temp, `sessions-desk-node-${cfg.port}.perf.log`);
   const stall = startStallWatch(perf);
   traceSyncOps();   // chaque gel désigne l'appel synchrone en cours (fichier lu, programme lancé)
+  const reads = startReadGuard({ file: perf });   // une ouverture de fichier qui traîne ne fige plus le serveur
   const driver = new DriverClient({ exe: cfg.driverExe, log: (l) => process.stderr.write(l + '\n') });
   const d = new Dashboard(cfg, driver);
   const srv = new Server(d);
@@ -40,7 +42,7 @@ export async function start(argv: string[]): Promise<Server> {
   void srv.firstState.then(() => { step('1er état'); const c = process.cpuUsage(); perfLine(perf, startupLine(steps, performance.now(), (c.user + c.system) / 1000)); });
   const unwatch = watchConfig(cfg, (line) => process.stdout.write(`${line}
 `));
-  srv.onStop = () => { unwatch(); void stall.stop(); driver.close(); process.exit(0); };
+  srv.onStop = () => { unwatch(); void stall.stop(); void reads.stop(); driver.close(); process.exit(0); };
   for (const sig of ['SIGINT', 'SIGBREAK'] as const) process.once(sig, () => { void srv.shutdown(); });   // Ctrl+C / Ctrl+Pause : arrêt propre
   srv.loop().catch((e) => { srv.logError(`boucle : ${(e as Error).message}`); process.exit(1); });
   return srv;

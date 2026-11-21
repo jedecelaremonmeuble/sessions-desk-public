@@ -1,45 +1,75 @@
 // Petits outils partagés, chacun calqué sur l'équivalent PowerShell / .NET du serveur legacy : là où les deux
 // mondes diffèrent (Trim, Split-Path, conversions « $x », [int]"0$p"…), c'est le comportement PowerShell qui est gardé.
-import { appendFileSync, closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, openSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, basename } from 'node:path';
+import { guardedRead, staleStamp, type ReadResult } from './slowfs.ts';
 
 export const nowMs = (): number => Date.now();
 
-/** Read-Tail : les N derniers octets d'un fichier, en lignes non vides ; la 1re ligne, tronquée, est sautée. */
-export function readTail(path: string, bytes: number): string[] {
-  let fd: number;
-  try { fd = openSync(path, 'r'); } catch { return []; }
-  try {
-    const size = fstatSync(fd).size;
-    const len = Math.min(size, bytes);
-    const buf = Buffer.alloc(len);
-    let n = 0;
-    while (n < len) { const r = readSync(fd, buf, n, len - n, size - len + n); if (r <= 0) break; n += r; }
-    let lines = buf.subarray(0, n).toString('utf8').split('\n');
-    if (size > len) lines = lines.slice(1);
-    return lines.filter((l) => netTrim(l).length > 0);
-  } finally { closeSync(fd); }
-}
+const text = (buf: Uint8Array): string => Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength).toString('utf8');
+const tailLines = (r: ReadResult): string[] => {
+  let lines = text(r.buf).split(String.fromCharCode(10));
+  if (r.from > 0) lines = lines.slice(1);
+  return lines.filter((l) => netTrim(l).length > 0);
+};
 
-/** Date de création d'un transcript : le 1er horodatage de ses 64 premiers Ko (la 1re ligne n'en porte pas toujours),
- *  à défaut la date de création du fichier ; null s'il est illisible. Ne change plus une fois le transcript écrit. */
-export function transcriptCreatedAt(path: string): number | null {
+/** Read-Tail : les N derniers octets d'un fichier, en lignes non vides ; la 1re ligne, tronquée, est sautée.
+ *  Jusqu'à 64 Ko, une ouverture qui traîne rend les lignes précédentes (slowfs.ts) ; au-delà, voir readTailSoft. */
+export function readTail(path: string, bytes: number): string[] {
+  const r = bytes <= 64 * 1024 ? guardedRead('tail', path, bytes, 'stale') : directTail(path, bytes);
+  return r ? tailLines(r) : [];
+}
+/** Lecture bloquante, dans le fil appelant : rien n'est gardé d'un gros fichier, il n'y a donc rien d'autre à rendre. */
+function directTail(path: string, bytes: number): ReadResult | null {
   let fd: number;
   try { fd = openSync(path, 'r'); } catch { return null; }
   try {
-    const buf = Buffer.alloc(64 * 1024);
-    const n = readSync(fd, buf, 0, buf.length, 0);
-    const m = /"timestamp":"([^"]+)"/.exec(buf.subarray(0, n).toString('utf8'));
-    const t = m ? Date.parse(m[1]!) : NaN;
-    if (Number.isFinite(t)) return t;
-    const b = fstatSync(fd).birthtimeMs;
-    return b > 0 ? Math.trunc(b) : null;
+    const st = fstatSync(fd); const len = Math.min(st.size, bytes); const buf = new Uint8Array(len);
+    let n = 0;
+    while (n < len) { const r = readSync(fd, buf, n, len - n, st.size - len + n); if (r <= 0) break; n += r; }
+    return { size: st.size, mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs, from: st.size - len, buf: buf.subarray(0, n) };
   } catch { return null; } finally { closeSync(fd); }
 }
+/** Read-Tail d'un gros fichier, sans figer le serveur : les lignes et la taille du fichier AU MOMENT de la lecture
+ *  (-1 : absent ou illisible) ; undefined si le disque n'a pas répondu à temps — à redemander au tour suivant. */
+export function readTailSoft(path: string, bytes: number): { size: number; lines: string[] } | undefined {
+  const r = guardedRead('tail', path, bytes, 'late');
+  if (r === undefined) return undefined;
+  return r ? { size: r.size, lines: tailLines(r) } : { size: -1, lines: [] };
+}
+/** Octets d'un fichier depuis `from` jusqu'à sa fin (lecture incrémentale) ; `from` rendu vaut 0 si le fichier a été
+ *  réécrit plus court. null : absent ou illisible ; undefined : pas de réponse à temps, à redemander. */
+export function readRange(path: string, from: number): { size: number; from: number; buf: Uint8Array } | null | undefined {
+  return guardedRead('range', path, from, 'late');
+}
 
+/** Date de création d'un transcript : le 1er horodatage de ses 64 premiers Ko (la 1re ligne n'en porte pas toujours),
+ *  à défaut la date de création du fichier ; null s'il est illisible, ou si le disque n'a pas répondu à temps (l'appelant
+ *  redemande tant qu'il n'a rien). Ne change plus une fois le transcript écrit. */
+export function transcriptCreatedAt(path: string): number | null {
+  const r = guardedRead('head', path, 64 * 1024, 'late');
+  if (!r) return null;
+  const m = /"timestamp":"([^"]+)"/.exec(text(r.buf));
+  const t = m ? Date.parse(m[1]!) : NaN;
+  if (Number.isFinite(t)) return t;
+  return r.birthtimeMs > 0 ? Math.trunc(r.birthtimeMs) : null;
+}
+
+/** Texte d'un fichier ; null s'il est absent ou illisible. Une ouverture qui traîne rend le texte précédent (slowfs.ts). */
+export function readText(path: string): string | null {
+  const r = guardedRead('read', path, 0, 'stale');
+  return r ? text(r.buf) : null;
+}
+/** Début d'un fichier (n octets au plus), mêmes règles que readText. */
+export function readHead(path: string, bytes: number): string | null {
+  const r = guardedRead('head', path, bytes, 'stale');
+  return r ? text(r.buf) : null;
+}
 /** JSON d'un fichier (BOM toléré, comme Get-Content | ConvertFrom-Json) ; undefined s'il est absent ou illisible. */
 export function readJson(path: string): unknown {
-  try { return JSON.parse(stripBom(readFileSync(path, 'utf8'))); } catch { return undefined; }
+  const t = readText(path);
+  if (t === null) return undefined;
+  try { return JSON.parse(stripBom(t)); } catch { return undefined; }
 }
 export const stripBom = (s: string): string => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s);
 
@@ -50,8 +80,15 @@ export function setContentAtomic(path: string, text: string, tmp = path + '.tmp'
 /** Add-Content -Encoding utf8 d'une ligne JSON. */
 export function addContent(path: string, text: string): void { appendFileSync(path, text + '\r\n', 'utf8'); }
 
-export function mtimeMs(path: string): number { try { return statSync(path).mtimeMs; } catch { return 0; } }
-export function fileSize(path: string): number { try { return statSync(path).size; } catch { return -1; } }
+/** Date et taille d'un fichier ; null s'il est absent. Tant qu'une lecture de ce fichier a rendu une valeur périmée
+ *  (slowfs.ts), ce sont la date et la taille de CETTE valeur : un cache fondé sur elles ne retient pas le périmé. */
+export function fileStamp(path: string): { mtimeMs: number; size: number } | null {
+  const s = staleStamp(path);
+  if (s !== undefined) return s;
+  try { const st = statSync(path); return { mtimeMs: st.mtimeMs, size: st.size }; } catch { return null; }
+}
+export function mtimeMs(path: string): number { return fileStamp(path)?.mtimeMs ?? 0; }
+export function fileSize(path: string): number { return fileStamp(path)?.size ?? -1; }
 export const isDir = (p: string): boolean => { try { return statSync(p).isDirectory(); } catch { return false; } };
 export const isFile = (p: string): boolean => { try { return statSync(p).isFile(); } catch { return false; } };
 export const exists = (p: string): boolean => existsSync(p);
