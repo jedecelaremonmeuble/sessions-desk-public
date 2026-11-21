@@ -163,8 +163,8 @@ const lastLine = r => { const l = (r || '').split('\n').map(x => x.trim()).filte
 const TODO = ['waiting', 'ask', 'done'];
 
 // ── Quota des comptes Claude ──
-// Relevé par le collecteur du lanceur toutes les 5 min (data.quota, dates en ms). Fonction pure, testée par
-// sessions-dashboard-tests.ps1 : % de la semaine, part de la semaine écoulée, écart au rythme régulier, budget par jour
+// Relevé par le collecteur du lanceur toutes les 5 min (data.quota, dates en ms). Fonction pure (pas de test dans ce dépôt) :
+// % de la semaine, part de la semaine écoulée, écart au rythme régulier, budget par jour
 // jusqu'à la remise, rythme récent (déduit de la projection du collecteur, faite sur les 30 dernières heures).
 const WEEK = 7 * 864e5, DAY = 864e5;
 function quotaView(q, now) {
@@ -355,7 +355,7 @@ function tagChips(it, cls) {
   // L'origine « interactive » (la majorité) et les HD (déjà dans le titre) ne prennent pas de place dans la liste.
   const ts = (it.tags || []).filter(t => TAG_AXES.includes(t.axis) && (cls === 'dtags' || (t.axis !== 'hd' && !(t.axis === 'origine' && t.v === 'interactive'))))
     .sort((a, b) => TAG_AXES.indexOf(a.axis) - TAG_AXES.indexOf(b.axis));
-  // Détail : on corrige à la main (lot 3) — × retire un tag, « + tag » en ajoute un ; le manuel gagne sur l'étiqueteur.
+  // Détail : on corrige à la main — × retire un tag, « + tag » en ajoute un ; le manuel gagne sur l'étiqueteur.
   const edit = cls === 'dtags' && canWrite && it.sessionId;
   if (!ts.length && !edit) return null;
   const box = el('span', cls);
@@ -379,7 +379,7 @@ function tagChips(it, cls) {
   return box;
 }
 
-// ── Correction à la main (lot 3) : POST /api/tags {id, axis, v, on} ; listes fermées par /api/tag-vocab ──
+// ── Correction à la main : POST /api/tags {id, axis, v, on} ; listes fermées par /api/tag-vocab ──
 const TAG_EDITABLE = ['domaine', 'outil', 'fonction'];
 let tagVocab = null;
 async function loadTagVocab() {
@@ -433,7 +433,7 @@ async function openTagEdit(it, anchor) {
   document.addEventListener('mousedown', outside, true);
   fill(); inp.focus();
 }
-// Validations métier (teams-watcher.ts, lot 5) : ce que le métier a tranché, qualifié par la session, avec sa
+// Validations métier (teams-watcher.ts) : ce que le métier a tranché, qualifié par la session, avec sa
 // preuve. Pures et autonomes. Une validation métier n'est jamais un go.
 const VAL_FR = { valide:T('validé', 'approved'), 'valide-reserve':T('validé sous réserve', 'approved with reservations'), refuse:T('refusé', 'refused'), 'a-preciser':T('à préciser', 'to clarify') };
 const VAL_CH = { teams:'Teams', mail:'email', inbound:T('demande Teams', 'Teams request'), relayed:T('rapportée, sans écrit', 'reported, not in writing') };
@@ -456,14 +456,14 @@ function validationLine(i, now) {
       : T('sans réponse de ' + (i.to || '?') + ' (attente expirée)', 'no reply from ' + (i.to || '?') + ' (wait expired)'));
   return i.q + ' · ' + (i.withdrawn ? T('retirée', 'withdrawn') : VAL_FR[i.decision] || i.decision) + ' · ' + (i.validator || '?') + ' · ' + at + ' (' + (VAL_CH[i.channel] || i.channel) + ')'
     + (i.changes ? T(' · modifiée ' + i.changes + ' fois', ' · changed ' + i.changes + (i.changes > 1 ? ' times' : ' time')) : '')
-    // Recopie sur le ticket (lot 7) : rien tant que le module est éteint.
+    // Recopie sur le ticket : rien tant que le module est éteint.
     + (!i.exported || i.withdrawn ? '' : i.exported === 'ok' ? T(' · 📌 recopiée sur le ticket', ' · 📌 copied to the ticket') : i.exported === 'echec' ? T(' · ⚠️ recopie en échec', ' · ⚠️ copy to the ticket failed')
       : i.exported === 'attente' ? T(' · recopie à réessayer', ' · copy to retry') : T(' · non recopiée (' + i.exported.slice(5) + ')', ' · not copied (' + i.exported.slice(5) + ')'));
 }
 const validationsOf = it => (data && data.teams && data.teams.validations && it.sessionId && data.teams.validations[it.sessionId]) || null;
 
-// Réponses Teams attendues (teams-watcher.ts, le cadrage) : une ligne par
-// attente. Pure et autonome (testée seule par sessions-dashboard-tests.ps1).
+// Réponses Teams attendues (teams-watcher.ts) : une ligne par
+// attente. Pure et autonome (pas de test dans ce dépôt).
 function teamsWaitLine(w, now, remindersOn) {
   const d = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? m + ' min' : m < 2880 ? Math.floor(m / 60) + ' h' : Math.floor(m / 1440) + T(' j', ' d'); };
   const day = t => new Date(t).toLocaleDateString(LOCALE, { timeZone: 'Europe/Paris' });
@@ -479,7 +479,7 @@ function teamsWaitLine(w, now, remindersOn) {
   if (w.lastError) s += ' (' + w.lastError + ')';
   return s;
 }
-// Boutons d'une attente (lot 2) : la règle est dans teams-watcher.ts, le serveur l'appelle.
+// Boutons d'une attente : la règle est dans teams-watcher.ts, le serveur l'appelle.
 async function teamsWaitAction(it, w, action) {
   if (!canWrite) return;
   try {
@@ -491,12 +491,12 @@ async function teamsWaitAction(it, w, action) {
 }
 // Rangée dans « ⏳ Attente Teams » : session terminée-à-relire, inactive ou fermée qui a au moins une attente OUVERTE
 // (pas encore de réponse). Une réponse arrivée (replied), une session au travail, bloquée ou qui attend ta décision
-// restent dans leur groupe : il y a quelque chose à voir. Pure (testée par sessions-dashboard-tests.ps1).
+// restent dans leur groupe : il y a quelque chose à voir. Pure (pas de test dans ce dépôt).
 function teamsHeld(state, waits) {
   return ['done', 'idle', 'closed'].includes(state) && (waits || []).some(w => w.status === 'open');
 }
 const teamsWaitsOf = it => (data && data.teams && data.teams.sessions && it.sessionId && data.teams.sessions[it.sessionId]) || [];
-// Demande Teams ENTRANTE (lot 3) : la session a été ouverte par le veilleur pour un message reçu en direct. Elle
+// Demande Teams ENTRANTE : la session a été ouverte par le veilleur pour un message reçu en direct. Elle
 // propose une réponse ; l'envoi au collègue est un geste de l'utilisateur, en deux clics (le rendu repart toutes les 2 s :
 // l'armement vit ici, pas dans le bouton).
 const teamsInboundOf = it => (data && data.teams && data.teams.inbound && it.sessionId && data.teams.inbound[it.sessionId]) || null;
@@ -773,7 +773,7 @@ function renderBoard(force) {
   main.append(board);
 }
 
-// ── Conversations Teams (💬, module « teams », teams-watcher.ts lot 9) : la vue TRANSVERSE, une ligne par chat et non par
+// ── Conversations Teams (💬, module « teams », teams-watcher.ts) : la vue TRANSVERSE, une ligne par chat et non par
 // session. Le veilleur liste tous les chats actifs (qu'une session y soit abonnée ou non) ; la page les range en « à toi
 // de répondre » (dernier mot au collègue, aucune session ne l'a reçu), « à voir » (il s'y est passé quelque chose depuis
 // ton dernier pointage : un collègue a écrit, ou une session a écrit en ton nom) et « à jour ». L'état lu de Teams ne
@@ -816,12 +816,12 @@ async function chatSeen(chatId, action, at) {
 const CHAT_ICON = { oneOnOne:'👤', group:'👥', meeting:'📅' };
 const CHAT_ROLE = { linked:T('suit ce fil', 'follows this thread'), wait:T('attend leur réponse', 'waiting for their reply'), replied:T('reçoit leur réponse', 'receives their reply'), inbound:T('ouverte pour cette demande', 'opened for this request'), past:T('y a écrit', 'wrote here') };
 const CHAT_WHY = { mention:T('tu es mentionné', 'you are mentioned'), quote:T('on répond à un de tes messages', 'someone replies to one of your messages'), named:T('on t’y nomme', 'you are named'), question:T('question qui suit ton message', 'question after your message') };
-// Lot 10 : messages en entier, fil dépliable (/api/teams-thread), réponse depuis la page (/api/teams-reply — le veilleur
+// Fil : messages en entier, fil dépliable (/api/teams-thread), réponse depuis la page (/api/teams-reply — le veilleur
 // poste dans Teams en ton nom, sur ton clic). Brouillons, fils ouverts et boîtes de réponse survivent aux relectures.
 const chatDrafts = new Map(), chatReplying = new Set(), chatThreads = new Map(), chatWide = new Set();
 let chatSending = null;
 const chatTyping = () => !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.creply'));
-// Lot 11 : confier un fil à une session (/api/teams-link). La session reçoit les messages à traiter puis toute la suite,
+// Fil confié : confier un fil à une session (/api/teams-link). La session reçoit les messages à traiter puis toute la suite,
 // jusqu'au « Détacher ». Pendant le choix de la session, la liste n'est pas redessinée (comme pendant la frappe).
 // « → session » sur un message : il rejoint les messages de référence de la remise (chatPickAnchors — on peut en retenir
 // plusieurs, un nouveau clic sur un message retenu l'enlève) ; consigne facultative, et
@@ -1094,9 +1094,8 @@ function renderLauncher() {
 
 // ── Runs du lanceur DANS LA LISTE (groupe 🤖) : une ligne par DEMANDE (runsByHd, plus bas) regroupant ses runs du jour (depuis minuit) et tout run en cours, avec le
 // détail d'une session manuelle (conversation, fichiers, coût, PR). Lecture seule. Source : /api/launcher?hours=24, relu
-// toutes les 30 s page visible (le serveur garde 15 s en cache) — aucune route nouvelle. Cadrage :
-// le cadrage.
-// launcherGroup est PURE (testée par sessions-dashboard-tests.ps1) : runs → éléments de liste ; la session headless
+// toutes les 30 s page visible (le serveur garde 15 s en cache) — aucune route nouvelle.
+// launcherGroup est PURE (pas de test dans ce dépôt) : runs → éléments de liste ; la session headless
 // d'un run en cours (même pid, ou même sessionId) est ABSORBÉE par lui — elle ne figure plus seule dans la liste.
 // Étapes scriptées (go, merge, production, doc : pas de claude -p) : ligne sans conversation.
 // Couleur (look) : en cours = busy · échec = waiting · PR qui attend la validation de l'utilisateur = ask · réussi = done.
@@ -1130,7 +1129,7 @@ function launcherGroup(runs, waiting, open, since) {
   return { items, absorbed };
 }
 // Une ligne par DEMANDE, pas par run : un HD qui passe diagnostic → dev → relecture → recette → merge faisait 5 lignes.
-// runsByHd est PURE (testée par sessions-dashboard-tests.ps1) : éléments de launcherGroup → un élément par HD, qui
+// runsByHd est PURE (pas de test dans ce dépôt) : éléments de launcherGroup → un élément par HD, qui
 // REPREND le run en cours s'il y en a un, sinon le plus récent (titre, couleur, PR, conversation), et porte la liste de
 // ses runs (du plus récent au plus ancien), leur enchaînement de phases et leur coût cumulé. Clé stable `hd:<n>` : la
 // sélection survit au run suivant de la même demande.
@@ -1160,7 +1159,7 @@ function pickRun(it) {
 }
 let runData = null, runTimer = null, runsRead = false, heldRun = null;   // runsRead : 1re lecture faite (une adresse ?sel=hd:… attend jusque-là)
 const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
-// Module « launcher » éteint (le serveur le dit dans data.modules ; le .ps1 ne dit rien : il l'a toujours).
+// Module « launcher » éteint (dit par data.modules ; absent, chez l'ancien serveur PowerShell : allumé).
 const launcherOff = () => !!(data && data.modules && !data.modules.launcher);
 async function loadRuns() {
   if (launcherOff()) { runData = null; return; }
@@ -1636,7 +1635,7 @@ function renderRunDetail(it, force) {
 }
 // La DEMANDE derrière un run (en-tête du détail) : demandeur, date, type, statut, assigné, client, liens Teams et
 // de tickets, début de la description — lue par GET /api/launcher/hd (commande de lecture des tickets du lanceur), gardée
-// ici par HD (l'en-tête se redessine toutes les 2 s ; le serveur garde 5 min). hdParts est PURE (testée par le .ps1).
+// ici par HD (l'en-tête se redessine toutes les 2 s ; le serveur garde 5 min). hdParts est PURE (pas de test dans ce dépôt).
 const HD_STATUS_FR = { New:T('Nouveau', 'New'), Open:T('Ouvert', 'Open'), InProgress:T('En cours', 'In progress'), Pending:T('En attente', 'Pending'), Waiting:T('En attente', 'Waiting'), Resolved:T('Résolu', 'Resolved'), Closed:T('Fermé', 'Closed') };
 const HD_KIND_FR = { Bug:'🐞 Bug', Idee:T('💡 Idée', '💡 Idea') };
 const HD_PRIO_FR = { Low:T('basse', 'low'), Medium:T('moyenne', 'medium'), High:T('haute', 'high'), Urgent:T('urgente', 'urgent') };
@@ -1694,7 +1693,7 @@ function runBanner(running, conv) {
 // ── Piloter le lanceur depuis le détail d'un run : go + consigne, livrer la PR (confirmation), relire,
 // sauter la recette, reprendre, verdict du diagnostic. La page ne fait que TAPER la commande du lanceur
 // (POST /api/launcher/order ⇒ la commande du lanceur) : il refait ses gardes et dit son refus, que l'on affiche tel quel.
-// runOrders est PURE (testée par sessions-dashboard-tests.ps1) : les gestes PROPOSÉS selon la phase du run et l'étape de
+// runOrders est PURE (testée : server/test/page-delivering.test.ts) : les gestes PROPOSÉS selon la phase du run et l'étape de
 // la demande — un filtre de lisibilité, pas une garde (le lanceur refuse ce qui n'a pas lieu d'être).
 function runOrders(phase, stage, pr) {
   // Livraison demandée ou en cours : « Livrer la PR » est déjà pris — le reproposer faisait croire que le clic était perdu.
@@ -1933,18 +1932,18 @@ async function sendCard(it, card) {
 const ORDER_FR = { go:T('▶ Feu vert (go)', '▶ Go-ahead (go)'), merge:T('🚀 Livrer la PR', '🚀 Ship the PR'), review:T('🔎 Relire la PR', '🔎 Review the PR'), 'recette-skip':T('⏭ Sauter la recette', '⏭ Skip testing'), rework:T('🔁 Reprendre la PR', '🔁 Rework the PR'),
   abandon:T('🗑️ Abandonner le sujet', '🗑️ Drop the subject'),
   adopt:T('🔎 Relire les commits ajoutés, puis livrer', '🔎 Review the added commits, then ship'), retry:T('↻ Relancer la livraison', '↻ Restart the delivery'), session:T('🧑‍💻 Reprendre en session', '🧑‍💻 Resume in a session') };
-// Livraison refusée (lot 1 des livraisons refusées) : la NATURE du refus, publiée par le
+// Livraison refusée : la NATURE du refus, publiée par le
 // lanceur (stages.json → waiting.refusalKind), remplace « Livrer la PR » par la suite qui a un sens. Commits ajoutés après
 // les contrôles ⇒ les relire ici, puis livrer CE sha (merge --adopt-head) ; panne technique ⇒ relancer. Conflit,
-// doublon, autre refus (lot 2) : « Livrer la PR » serait refusé à l'identique ⇒ « Reprendre en session » (formulaire
-// Nouvelle session prérempli) ; offert aussi en repli après les deux premiers. PURE (testée par le .ps1).
+// doublon, autre refus : « Livrer la PR » serait refusé à l'identique ⇒ « Reprendre en session » (formulaire
+// Nouvelle session prérempli) ; offert aussi en repli après les deux premiers. PURE (pas de test dans ce dépôt).
 function deliveryOrders(list, refusalKind) {
   if (!refusalKind || !list.includes('merge')) return list;
   if (refusalKind === 'head-changed') return [...list.map(o => o === 'merge' ? 'adopt' : o), 'session'];
   if (refusalKind === 'technical') return [...list.map(o => o === 'merge' ? 'retry' : o), 'session'];
   return list.map(o => o === 'merge' ? 'session' : o);
 }
-// Premier message de la session de reprise (PURE, testée par le .ps1) : la PR, ce que le lanceur a dit, et la règle —
+// Premier message de la session de reprise (PURE, pas de test dans ce dépôt) : la PR, ce que le lanceur a dit, et la règle —
 // rien n'est mergé sans le go de l'humain. Une session qui livrerait seule ferait sauter la relecture que le refus garde.
 const RESUME_WHAT = { conflict:'résous le conflit avec la branche principale', duplicate:'vérifie si elle double un travail déjà livré ou ouvert (à fermer) ou si elle le complète (à livrer)',
   'head-changed':'relis les commits ajoutés après les contrôles du lanceur', technical:'comprends la panne de la livraison' };
@@ -1954,7 +1953,7 @@ function resumePrompt(hd, pr, kind, reason) {
     'Reprends-la : pars de la branche de la PR à jour dans un worktree neuf, ' + (RESUME_WHAT[kind] || 'comprends ce qui bloque') + ', rebase sur la branche principale juste avant, rejoue build et tests.',
     'Ne merge rien sans mon go : montre-moi d’abord ce que tu as changé et le résultat des contrôles.'].join('\n\n');
 }
-// Ce que dit l'en-tête du bloc de relecture (PURE, testée par le .ps1) : commits ajoutés, ou PR réécrite (rebase,
+// Ce que dit l'en-tête du bloc de relecture (PURE, pas de test dans ce dépôt) : commits ajoutés, ou PR réécrite (rebase,
 // force-push) dont il faut tout relire, ou rien à relire (la PR porte de nouveau la tête contrôlée).
 function diffHeadline(d) {
   if (!d || d.error) return '⛔ ' + ((d && d.error) || T('diff illisible', 'unreadable diff'));
@@ -3293,7 +3292,7 @@ async function sendBc(force = false) {
   } catch { say(T('échec de la demande', 'request failed')); }
   bcSending = false; if ($('bc-go')) $('bc-go').disabled = false; tick();
 }
-// ── Tags choisis à la création : posés comme une correction à la main (lot 3), avant le démarrage de la session ──
+// ── Tags choisis à la création : posés comme une correction à la main, avant le démarrage de la session ──
 // Domaine et outil : listes fermées (/api/tag-vocab) ; sinon le mot devient une fonction (« Power Dial » → power-dial).
 let newTags = [];
 const isFonction = v => /^[a-z0-9]+(-[a-z0-9]+){0,4}$/.test(v) && v.length >= 3 && v.length <= 40;
@@ -4000,7 +3999,7 @@ const convWhen = at => {
 };
 // ── Markdown des messages de Claude ──
 // Les réponses de Claude sont écrites en markdown : affichées en texte brut, on lisait des ** et des ` partout.
-// Analyse PURE (texte -> arbre, testée sous node par sessions-dashboard-tests.ps1), puis construction DOM par
+// Analyse PURE (texte -> arbre ; pas de test dans ce dépôt), puis construction DOM par
 // createElement/textContent : jamais d'innerHTML, un transcript ne peut donc pas injecter de HTML. Liens : http(s) seuls.
 // Sous-ensemble utile : titres, paragraphes, listes (puces, numérotées, imbriquées), citations, blocs de code,
 // tableaux, filets ; en ligne : gras, italique, barré, code, liens [texte](url) et URL nues.
