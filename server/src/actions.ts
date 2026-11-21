@@ -470,7 +470,7 @@ export class Actions {
         newTags.push([a, v]);
       }
     }
-    const branch = branchRaw.trim(); let prelude = ''; let startDir = dir.path;
+    const branch = branchRaw.trim(); let prelude = ''; let startDir = dir.path; let launchDir = dir.path;
     if (branch) {
       if (!/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*){0,2}$/i.test(branch) || branch.length > 80 || /\.\.|\.lock$|\/$/i.test(branch))
         return T('nom de branche invalide (minuscules, chiffres, . _ - et /, ex. feat/hd-123456-x)', 'invalid branch name (lowercase, digits, . _ - and /, e.g. feat/hd-123456-x)');
@@ -488,7 +488,7 @@ export class Actions {
         + `git -C ${q(top)} worktree add -b ${q(branch)} ${q(wt)} origin/master; `
         + "if ($LASTEXITCODE) { Write-Host 'Échec de la création du worktree : session non lancée.' -ForegroundColor Red; return }; "
         + `Set-Location -LiteralPath ${q(join(wt, rel))}; `;
-      startDir = top;
+      startDir = top; launchDir = join(wt, rel);
     }
     // Dossier non approuvé par Claude Code : la session resterait bloquée en silence sur la question d'approbation
     // (trust.ts). Seul « non approuvé » refuse ; un statut inconnu (configuration illisible) laisse lancer. Un worktree
@@ -514,6 +514,8 @@ export class Actions {
     for (const [a, v] of newTags) this.d.setTag(sid, a, v, true);
     const b64 = Buffer.from(prelude + cmd, 'utf16le').toString('base64');
     await this.wt(`-w 0 nt -d "${startDir}" pwsh -NoExit -EncodedCommand ${b64}`);
+    // Onglet ouvert : surveiller que la session démarre vraiment (launch-watch.ts — « lancée mais rien ne tourne »).
+    try { this.d.launches?.record({ cwd: launchDir, worktree: Boolean(branch), prompt: prompt.trim(), ...(newTags.length || wantSid ? { sid } : {}) }); } catch { /* surveillance seulement */ }
     return null;
   }
 }
