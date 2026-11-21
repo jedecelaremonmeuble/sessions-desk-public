@@ -19,13 +19,15 @@
   page à chaud ou redémarrage, arrêt propre ou forcé, durée de la coupure.
 
   -SkipServer : les étapes 1 et 2 seulement (le serveur n'est ni arrêté ni relancé).
+  -ServerOnly : les étapes 1 et 3 seulement — ni étiqueteur, ni surveillant Teams, ni tâche, ni hook posés (poste où
+                seul le serveur est installé ; c'est ce que lance Auto-Update.ps1 sur un tel poste).
   -Restart    : redémarre le serveur même si seule la page a changé.
   -Rollback   : accepte de remettre en service un commit plus ancien que celui qui tourne.
 
 .EXAMPLE
   pwsh -NoProfile -File server/watchdog/Deploy.ps1
 #>
-param([string]$Target = (Join-Path $env:USERPROFILE '.claude\scripts'), [switch]$SkipServer, [switch]$Restart, [switch]$Rollback)
+param([string]$Target = (Join-Path $env:USERPROFILE '.claude\scripts'), [switch]$SkipServer, [switch]$ServerOnly, [switch]$Restart, [switch]$Rollback)
 $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -47,6 +49,8 @@ if (-not $nodeExe) { throw 'node introuvable dans le PATH.' }
 $src = Join-Path $repo 'server\src'
 # Scripts d'accompagnement : legacy/ tant que le serveur historique est dans le dépôt, sinon server/scripts/.
 $scripts = if (Test-Path (Join-Path $repo 'legacy')) { Join-Path $repo 'legacy' } else { Join-Path $repo 'server\scripts' }
+if ($ServerOnly -and $SkipServer) { throw '-ServerOnly et -SkipServer : rien à faire.' }
+if (-not $ServerOnly) {
 $null = New-Item -ItemType Directory -Force $Target
 
 function Register-HiddenNodeTask([string]$Name, [string]$Script, [int]$EveryMinutes, [int]$LimitMinutes, [string]$Description) {
@@ -76,6 +80,7 @@ Copy-Item (Join-Path $scripts 'restart-idle-sessions.ps1') (Join-Path $Target 'r
 "commit $head`nbranche $branch`ndéployé $(Get-Date -Format s)`ndepuis $repo" | Set-Content (Join-Path $Target 'DEPLOYED.txt') -Encoding utf8
 Write-Host "Étiqueteur, surveillant Teams et scripts copiés vers $Target (commit $($head.Substring(0, 10)), $branch)." -ForegroundColor Green
 
+}
 if ($SkipServer) { return }
 
 # Page seule changée depuis le commit en service : on la remplace dans la copie, sans arrêter le serveur. Lu APRÈS
