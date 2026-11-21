@@ -10,9 +10,9 @@
 // ⚠ Pas d'héritage : l'approbation se lit sur le dossier EXACT où `claude` démarre. Observé : un dossier parent
 // approuvé n'évite pas la question dans un sous-dossier qui est lui-même un dépôt git. Faute de règle documentée, on
 // ne déduit rien d'un parent — un worktree neuf n'est donc jamais approuvé d'avance (actions.ts : avertir, pas refuser).
-import { statSync } from 'node:fs';
+
 import { dirname, join } from 'node:path';
-import { readJson } from './util.ts';
+import { fileStamp, readJson } from './util.ts';
 
 /** Forme de comparaison : barres obliques, sans barre finale, en minuscules (`C:\A\` → `c:/a`, `C:\` → `c:`). */
 export function trustKey(p: string): string {
@@ -61,7 +61,8 @@ export class TrustReader {
   constructor(file: () => string) { this.file = file; }
   roots(): string[] | null {
     const f = this.file(); let stamp = '';
-    try { const s = statSync(f); stamp = `${f}:${s.mtimeMs}:${s.size}`; } catch { return this.#roots; }
+    const s = fileStamp(f); if (!s) return this.#roots;
+    stamp = `${f}:${s.mtimeMs}:${s.size}`;
     if (stamp !== this.#stamp) {
       const raw = readJson(f);
       if (raw !== undefined) { this.#roots = trustedRoots(raw); this.#stamp = stamp; }

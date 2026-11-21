@@ -21,8 +21,8 @@ import { Drafts } from './drafts.ts';
 import { claudeJsonPath, TrustReader } from './trust.ts';
 import { LaunchWatch, type Observed } from './launch-watch.ts';
 import {
-  addContent, GUID, ieq, imatch, isDir, isFile, leaf, mtimeMs, netTrim, nowMs, parent, psString, readJson, readTail,
-  setContent, setContentAtomic, splitPathParent, transcriptCreatedAt,
+  addContent, fileStamp, GUID, ieq, imatch, isDir, isFile, leaf, mtimeMs, netTrim, nowMs, parent, psString, readJson, readTail,
+  readTailSoft, setContent, setContentAtomic, splitPathParent, transcriptCreatedAt,
 } from './util.ts';
 
 export interface Meta {
@@ -271,8 +271,8 @@ export class Dashboard {
   autoTags(id: string): SessionTag[] | null {
     if (!id) return null;
     const p = join(this.sf('session-tags'), id + '.json');
-    let st; try { st = statSync(p); } catch { this.tagsCache.delete(id); return null; }
-    if (!st.isFile()) return null;
+    const st = fileStamp(p);
+    if (!st) { this.tagsCache.delete(id); return null; }
     const k = `${st.mtimeMs}/${st.size}`;
     let c = this.tagsCache.get(id);
     if (!c || c.k !== k) { c = { k, tags: cleanTags((readJson(p) as { tags?: unknown } | undefined)?.tags) }; this.tagsCache.set(id, c); }
@@ -325,9 +325,13 @@ export class Dashboard {
     let size: number;
     try { size = statSync(c.path).size; } catch { return c; }
     if (size === c.len) return c;
-    c.len = size;
+    // Disque muet (slowfs.ts) : la session garde ce qu'on savait d'elle, la lecture est redemandée au tour suivant.
+    const read = readTailSoft(c.path, 512 * 1024);
+    if (!read) return c;
+    // Taille AU MOMENT de la lecture : une réponse arrivée en retard n'est pas prise pour l'état d'aujourd'hui.
+    c.len = read.size >= 0 ? read.size : size;
     const replyLines: string[] = []; let usageLine: string | null = null; const wtLines: string[] = [];
-    const tail = readTail(c.path, 512 * 1024);
+    const tail = read.lines;
     try { c.quiet = lastNewsAt(tail); } catch { c.quiet = null; }
     c.queued = pendingQueue(tail);
     for (const l of tail) {
@@ -396,9 +400,11 @@ export class Dashboard {
     let size: number;
     try { size = statSync(hist).size; } catch { return; }
     if (size === this.histLen) return;
-    this.histLen = size;
+    const read = readTailSoft(hist, 3 * 1024 * 1024);
+    if (!read) return;                        // disque muet : les prompts connus restent, relu au tour suivant
+    this.histLen = read.size >= 0 ? read.size : size;
     const p = new Map<string, Prompt[]>();
-    for (const l of readTail(hist, 3 * 1024 * 1024)) {
+    for (const l of read.lines) {
       let h: Record<string, unknown>;
       try { h = JSON.parse(l); } catch { continue; }
       if (!h || !h.sessionId) continue;
@@ -551,7 +557,7 @@ export class Dashboard {
         // En file : seulement tant qu'elle travaille (au repos, Claude Code a déjà pris la file).
         queued: ieq(status, 'busy') ? m.queued : [],
         // Tâches qu'elle s'est programmées (CronCreate, ScheduleWakeup) et qui attendent encore : la fermer les annule.
-        scheduled: m.path && !headless ? pendingSchedules(this.schedScan.lines(m.path), now, Number(s.startedAt) || 0) : [],
+        scheduled: m.path && !headless ? pendingSchedules(this.schedScan.lines(m.path, m.len), now, Number(s.startedAt) || 0) : [],
         // Verdict du juge (« attend l'utilisateur ? ») sur une session au repos : absent tant qu'il n'est pas rendu.
         ...(this.askJudge && !headless && (ieq(status, 'idle') || ieq(status, 'shell')) ? { askVerdict: this.askJudge.verdict(sid, m.reply) } : {}),
       } as Session);
@@ -657,7 +663,8 @@ export class Dashboard {
   teamsCache: { k: string; value: unknown } = { k: '', value: null };
   teamsWaits(): unknown {
     const p = join(this.sf('teams-waits'), '_summary.json');
-    let st; try { st = statSync(p); } catch { this.teamsCache = { k: '', value: null }; return null; }
+    const st = fileStamp(p);
+    if (!st) { this.teamsCache = { k: '', value: null }; return null; }
     const k = `${st.mtimeMs}/${st.size}`;
     if (this.teamsCache.k !== k) {
       const v = readJson(p) as { sessions?: unknown } | undefined;

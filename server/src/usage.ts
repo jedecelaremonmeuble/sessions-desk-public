@@ -1,7 +1,6 @@
 // Quota des comptes Claude (Get-ClaudeUsage) et conversions de dates du lanceur (ConvertTo-LaunchMs).
 import type { Config } from './config.ts';
-import { mtimeMs, psString, readJson, stripBom } from './util.ts';
-import { readFileSync } from 'node:fs';
+import { mtimeMs, psString, readJson, readText, stripBom } from './util.ts';
 import { dirname, join } from 'node:path';
 
 /**
@@ -38,7 +37,7 @@ export function readClaudeUsage(cfg: Config): unknown[] {
   if (stamp === cache.stamp) return cache.value;
   let value: unknown[] = [];
   try {
-    const j = JSON.parse(stripBom(readFileSync(f, 'utf8'))) as Record<string, Record<string, unknown>>;
+    const j = JSON.parse(stripBom(readText(f) ?? '')) as Record<string, Record<string, unknown>>;
     value = Object.entries(j).map(([uuid, a]) => {
       let limits: unknown[] = [];
       try {
@@ -74,7 +73,7 @@ export function activeAccountUuid(cfg: Config): string | null {
   const stamp = mtimeMs(f);
   if (f === acctCache.file && stamp === acctCache.stamp) return acctCache.value;
   let value: string | null = null;
-  try { const j = JSON.parse(stripBom(readFileSync(f, 'utf8'))) as { oauthAccount?: { accountUuid?: unknown } }; value = psString(j.oauthAccount?.accountUuid) || null; } catch { /* illisible : inconnu */ }
+  try { const j = JSON.parse(stripBom(readText(f) ?? '')) as { oauthAccount?: { accountUuid?: unknown } }; value = psString(j.oauthAccount?.accountUuid) || null; } catch { /* illisible : inconnu */ }
   acctCache = { file: f, stamp, value };
   return value;
 }
@@ -100,7 +99,7 @@ export function promptSuggestionSetting(cfg: Config, env: NodeJS.ProcessEnv = pr
   const f = join(cfg.claude, 'settings.json'); const stamp = mtimeMs(f);
   if (stamp === sugCache.stamp) return sugCache.value;
   let forced = false;
-  try { const j = JSON.parse(stripBom(readFileSync(f, 'utf8'))) as { env?: Record<string, unknown> }; forced = truthy(j.env?.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION); } catch { /* illisible : non forcé */ }
+  try { const j = JSON.parse(stripBom(readText(f) ?? '')) as { env?: Record<string, unknown> }; forced = truthy(j.env?.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION); } catch { /* illisible : non forcé */ }
   sugCache = { stamp, value: { forced, since: forced && stamp ? Math.trunc(stamp) : null } };
   return sugCache.value;
 }

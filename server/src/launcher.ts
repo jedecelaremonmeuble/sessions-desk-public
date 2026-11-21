@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { CardsFeed } from './cards.ts';
 import type { Dashboard } from './state.ts';
 import { launchMs, readClaudeUsage, readUsageRaw, roundHalfEven } from './usage.ts';
-import { exists, isDir, leaf, netTrim, nowMs, psString, readJson, setContent, splitPathParent } from './util.ts';
+import { exists, isDir, leaf, netTrim, nowMs, psString, readHead, readJson, readText, setContent, splitPathParent } from './util.ts';
 import { ntfsSort } from './state.ts';
 import { T } from './i18n.ts';
 import { runLive } from './run-live.ts';
@@ -49,7 +49,7 @@ function walkFiles(dir: string, name: string, acc: { full: string; mtime: number
   return acc;
 }
 function firstLine(path: string): string | null {
-  try { for (const l of readFileSync(path, 'utf8').replace(/^﻿/, '').split(/\r?\n/)) if (netTrim(l)) return l; } catch { /* illisible */ }
+  try { for (const l of (readText(path) ?? '').replace(/^﻿/, '').split(/\r?\n/)) if (netTrim(l)) return l; } catch { /* illisible */ }
   return null;
 }
 
@@ -232,7 +232,7 @@ export class Launcher {
   async #claudeProcs(): Promise<{ pid: number; started: number | null; commandLine: string | null }[]> {
     try { return await this.d.driver.call('procs', { name: 'claude', commandLine: true }) as never; } catch { return []; }
   }
-  #heartbeat(): number { try { const t = Date.parse(readFileSync(join(this.root, 'heartbeat.stamp'), 'utf8').trim()); return Number.isFinite(t) ? t : 0; } catch { return 0; } }
+  #heartbeat(): number { try { const t = Date.parse((readText(join(this.root, 'heartbeat.stamp')) ?? '').trim()); return Number.isFinite(t) ? t : 0; } catch { return 0; } }
 
   /** Get-Launcher */
   async view(hours: number): Promise<Obj> {
@@ -277,7 +277,7 @@ export class Launcher {
         let sid = (info?.sessionId ?? null) as string | null;
         if (!sid) {
           const tr = join(d.full, 'transcript.jsonl');
-          if (existsSync(tr)) { try { for (const l of readFileSync(tr, 'utf8').split('\n').slice(0, 3)) { const mm = l.match(/"session_id":"([0-9a-f-]{36})"/i); if (mm) { sid = mm[1]!; break; } } } catch { /* illisible */ } }
+          if (existsSync(tr)) { try { for (const l of (readHead(tr, 256 * 1024) ?? '').split('\n').slice(0, 3)) { const mm = l.match(/"session_id":"([0-9a-f-]{36})"/i); if (mm) { sid = mm[1]!; break; } } } catch { /* illisible */ } }
         }
         const os = lv ? openByPid.get(lv.pid) : undefined;
         let stage: unknown = null;

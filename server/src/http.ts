@@ -28,7 +28,7 @@ import type { Dashboard } from './state.ts';
 import { readTranscript } from './transcript.ts';
 import { upload } from './upload.ts';
 import { readImage } from './image.ts';
-import { addContent, exists, GUID, ieq, nowMs, psArray, psIntZero, psString, psTruthy, sleep, tryParseInt, tryParseUInt } from './util.ts';
+import { addContent, exists, GUID, ieq, nowMs, psArray, psIntZero, psString, psTruthy, readJson, sleep, tryParseInt, tryParseUInt } from './util.ts';
 import { Watch } from './watch.ts';
 import { versionReader } from './version.ts';
 import { setPhase } from './stall.ts';
@@ -461,7 +461,7 @@ export class Server {
   /** Questions qu'un « Chat about this » a fermées dans le terminal de cette session (voir parked.ts). */
   #parked(pid: number): Parked | null {
     try {
-      const id = psString((JSON.parse(readFileSync(join(this.d.sessionsDir, `${pid}.json`), 'utf8')) as { sessionId?: unknown }).sessionId).trim().toLowerCase();
+      const id = psString((readJson(join(this.d.sessionsDir, `${pid}.json`)) as { sessionId?: unknown } | undefined)?.sessionId).trim().toLowerCase();
       if (!GUID.test(id)) return null;
       const f = this.d.metaCache.get(id)?.path ?? this.d.findTranscript(id);
       return f ? parkedQuestions(f) : null;

@@ -6,7 +6,7 @@
 // Sauf `durable`, ces tâches vivent dans le PROCESS de la session : la fermer ou la relancer les annule. On rejoue
 // donc tout le transcript (pas seulement sa fin : l'opération est souvent programmée des heures avant) pour savoir ce
 // qui est encore attendu, et la page le montre en clair. Lecture incrémentale : seules les lignes utiles sont gardées.
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
+import { readRange } from './util.ts';
 
 export interface Scheduled {
   id: string;
@@ -143,33 +143,28 @@ export function nextCronFire(expr: string, from: number): number | null {
 
 /** Lecture incrémentale des transcripts : garde, par fichier, les seules lignes utiles et la position lue. */
 export class ScheduleScan {
-  readonly #c = new Map<string, { off: number; lines: string[] }>();
+  readonly #c = new Map<string, { off: number; size: number; lines: string[] }>();
 
-  lines(path: string): string[] {
+  /** `size` : taille du fichier si l'appelant la connaît déjà — inchangée depuis la dernière lecture complète, le
+   *  fichier n'est pas rouvert. Disque muet (slowfs.ts) : les lignes déjà connues, la suite au tour suivant. */
+  lines(path: string, size?: number): string[] {
     let c = this.#c.get(path);
-    if (!c) { c = { off: 0, lines: [] }; this.#c.set(path, c); }
-    let fd: number;
-    try { fd = openSync(path, 'r'); } catch { return c.lines; }
-    try {
-      const size = fstatSync(fd).size;
-      if (size < c.off) { c.off = 0; c.lines = []; }                     // fichier réécrit : on reprend du début
-      const CH = 4 * 1024 * 1024; let carry = Buffer.alloc(0);
-      while (c.off + carry.length < size) {
-        const buf = Buffer.alloc(Math.min(CH, size - c.off - carry.length));
-        const n = readSync(fd, buf, 0, buf.length, c.off + carry.length);
-        if (n <= 0) break;
-        const all = carry.length ? Buffer.concat([carry, buf.subarray(0, n)]) : buf.subarray(0, n);
-        const last = all.lastIndexOf(10);
-        if (last < 0) { carry = all; continue; }                         // ligne plus longue qu'un bloc : on continue
-        let i = 0;
-        while (i <= last) {
-          const e = all.indexOf(10, i);
-          if (e - i > 20) { const l = all.toString('utf8', i, e); if (USEFUL.test(l)) c.lines.push(l); }
-          i = e + 1;
-        }
-        c.off += last + 1; carry = all.subarray(last + 1);
-      }
-    } finally { closeSync(fd); }
+    if (!c) { c = { off: 0, size: -1, lines: [] }; this.#c.set(path, c); }
+    if (size !== undefined && size >= 0 && size === c.size) return c.lines;
+    const r = readRange(path, c.off);
+    if (!r) return c.lines;
+    if (r.from !== c.off) { c.off = 0; c.lines = []; }                   // fichier réécrit : on reprend du début
+    const all = Buffer.from(r.buf.buffer, r.buf.byteOffset, r.buf.byteLength);
+    const last = all.lastIndexOf(10);
+    let i = 0;
+    while (i <= last) {
+      const e = all.indexOf(10, i);
+      if (e - i > 20) { const l = all.toString('utf8', i, e); if (USEFUL.test(l)) c.lines.push(l); }
+      i = e + 1;
+    }
+    c.off += last + 1;
+    // Lu jusqu'au bout (une lecture est plafonnée) : cette taille n'a plus rien à apprendre.
+    c.size = r.from + all.length === r.size ? r.size : -1;
     return c.lines;
   }
 }
