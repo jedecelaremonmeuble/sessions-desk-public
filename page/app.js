@@ -533,9 +533,27 @@ const byKey = key => allItems().find(it => it.key === key);
 // branche poussée déjà intégrée à master.
 // Sans worktree (jamais créé, ou déjà purgé), la session travaillait dans la copie principale, partagée : son
 // désordre n'est pas le sien — seule la PR compte.
+// ── Tâches PROGRAMMÉES par la session elle-même (CronCreate, réveil d'une boucle /loop) : le serveur rejoue son
+// transcript (scheduled.ts). Sauf « durable », elles vivent dans le process : fermer ou relancer la session les annule.
+const schedOf = it => (it && Array.isArray(it.scheduled) ? it.scheduled : []);
+const schedFragile = it => schedOf(it).filter(j => !j.durable);
+function schedWhen(j, now) {
+  if (!j.at) return T('heure inconnue', 'unknown time');
+  const d = new Date(j.at), hm = d.toLocaleTimeString(LOCALE, { hour:'2-digit', minute:'2-digit' });
+  const day = d.toDateString() === new Date(now).toDateString() ? '' : d.toDateString() === new Date(now + 86400000).toDateString() ? T('demain ', 'tomorrow ')
+    : d.toLocaleDateString(LOCALE, { weekday:'short', day:'numeric', month:'short' }) + ' ';
+  return day + T('à ', 'at ') + hm + (j.at > now ? T(' (dans ' + ago(j.at - now) + ')', ' (in ' + ago(j.at - now) + ')') : T(' (maintenant)', ' (now)'));
+}
+function schedLine(j, now) {
+  const what = j.kind === 'wakeup' ? T('réveil programmé', 'scheduled wake-up')
+    : j.recurring ? T('tâche récurrente', 'recurring task') + (j.cron ? ' « ' + j.cron + ' »' : '') + T(', prochaine', ', next') : T('tâche programmée', 'scheduled task');
+  return '⏰ ' + what + ' ' + schedWhen(j, now);
+}
+const schedList = it => schedOf(it).map(j => schedLine(j, data.now) + (j.prompt ? '\n  « ' + j.prompt.slice(0, 240) + ' »' : '')).join('\n');
+const SCHED_WARN = T('Liée à cette session : la fermer ou la relancer annule la tâche.', 'Tied to this session: closing or relaunching it cancels the task.');
 const prMerged = it => !!(it.prInfo && it.prInfo.state === 'MERGED');
 const closable = it => {
-  const g = it.git; if (it.kind !== 'open' || it.headless || it.status !== 'idle' || !g) return false;
+  const g = it.git; if (it.kind !== 'open' || it.headless || it.status !== 'idle' || !g || schedFragile(it).length) return false;
   if (!g.worktree) return prMerged(it);
   if (g.nFiles || (g.upstream && g.ahead)) return false;
   return prMerged(it) || !!(g.upstream && g.merged);
@@ -2298,6 +2316,8 @@ function renderList() {
         tw.title = tws.map(w => teamsWaitLine(w, data.now, data.teams.reminders) + T('\n  « ' + w.excerpt + ' »', '\n  "' + w.excerpt + '"')).join('\n');
         r.append(tw);
       }
+      const sch = isLive(it) ? schedOf(it) : [];
+      if (sch.length) { const x = el('span', 'tw sched', schedLine(sch[0], data.now) + (sch.length > 1 ? ' · +' + (sch.length - 1) : '')); x.title = schedList(it) + (schedFragile(it).length ? '\n\n' + SCHED_WARN : ''); r.append(x); }
       const vals = validationsOf(it), vb = validationBadge(vals);
       if (vb) { const x = el('span', 'tw val' + (vals.refused || vals.unqualified ? ' ref' : vals.expected ? ' pre' : ''), vb); x.title = vals.items.filter(i => !i.withdrawn).map(i => validationLine(i, data.now) + '\n  ' + i.question).join('\n'); r.append(x); }
       if (canWrite && closable(it)) {                    // « peut se fermer » (inactive, tout est mergé) : ✕ la ferme sans ouvrir la session
@@ -2570,15 +2590,7 @@ async function closeSession(it) {
   try {
     let r = await post('/api/close?pid=' + it.pid);
     if (r.needForce && r.jobs) {
-      if (!confirm(T(r.error + '.
-
-' + schedList(it) + '
-
-Fermer quand même ? Elle ne s’exécutera pas.', r.error + '.
-
-' + schedList(it) + '
-
-Close anyway? It will not run.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
+      if (!confirm(T(r.error + '.\n\n' + schedList(it) + '\n\nFermer quand même ? Elle ne s’exécutera pas.', r.error + '.\n\n' + schedList(it) + '\n\nClose anyway? It will not run.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
       r = await post('/api/close?pid=' + it.pid + '&force=1');
     } else if (r.needForce) {
       if (!confirm(T(r.error + '.\n\nL’arrêter de force ? Le travail en cours dans ce tour sera perdu ; la conversation reste reprenable.', r.error + '.\n\nForce it to stop? The work in progress in this turn will be lost; the conversation stays reopenable.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
@@ -3489,6 +3501,7 @@ function renderDetail(force) {
   const chip = el('span', 'chip'); chip.append(el('span', 'dot'));
   if (it.state === 'busy') chip.append(spinLabel(it)); else chip.append(T(LABEL[it.state] + ' · depuis ' + ago(data.now - it.since), LABEL[it.state] + ' · for ' + ago(data.now - it.since)) + (it.waitingFor ? ' · ' + it.waitingFor : ''));
   if (it.status === 'shell' && it.state !== 'shell') { const t = el('span', 'tag cl', T('commande en arrière-plan', 'background command')); t.title = T('Tour terminé ; une commande lancée en arrière-plan tourne encore dans cette session', 'Turn finished; a command started in the background is still running in this session'); chip.append(t); }
+  if (it.kind === 'open' && schedOf(it).length) { const t = el('span', 'tag sched', '⏰ ' + schedOf(it).map(j => j.at ? new Date(j.at).toLocaleTimeString(LOCALE, { hour:'2-digit', minute:'2-digit' }) : '?').join(', ')); t.title = schedList(it); chip.append(t); }
   if (it.stale) { const t = el('span', 'tag cl', T('statut corrigé d\'après l\'écran', 'status corrected from the screen')); t.title = T('Claude Code la déclare encore « au travail », mais ' + (it.stale === 'hook' ? 'elle a signalé la fin de son tour (hook Stop)' : 'son écran montre un tour terminé'), 'Claude Code still reports it as "working", but ' + (it.stale === 'hook' ? 'it signalled the end of its turn (Stop hook)' : 'its screen shows a finished turn')); chip.append(t); }
   sline.append(chip);
   if (it.model) sline.append(modelBadge(it.model, false, T('Modèle du dernier message de la session (suit un /model en cours de route)', 'Model of the last message of the session (follows a /model on the way)')));
@@ -3497,6 +3510,17 @@ function renderDetail(force) {
   const a = prLink(it); if (a) { meta.append(' · ', a); prTags(it).forEach(t => meta.append(t)); }
   head.append(meta);
   const dtags = tagChips(it, 'dtags'); if (dtags) head.append(dtags);
+  const dsch = it.kind === 'open' ? schedOf(it) : [];
+  if (dsch.length) {
+    const box = el('div', 'twaits sched');
+    for (const j of dsch) {
+      const l = el('div', 'tw sched', schedLine(j, data.now) + (j.durable ? T(' · enregistrée sur disque', ' · saved on disk') : ''));
+      if (j.prompt) { l.append(el('span', 'tx', ' — « ' + (j.prompt.length > 220 ? j.prompt.slice(0, 220) + '…' : j.prompt) + ' »')); l.title = j.prompt; }
+      box.append(l);
+    }
+    if (schedFragile(it).length) box.append(el('div', 'tx warn', '⚠ ' + SCHED_WARN));
+    head.append(box);
+  }
   const dinb = teamsInboundOf(it);
   if (dinb) {
     const box = el('div', 'twaits');
