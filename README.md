@@ -217,7 +217,7 @@ registers an hourly scheduled task that does it: when `main` has moved and **all
 fast-forwards the clone and runs `Deploy.ps1` (with `-ServerOnly` on a machine where only the server was installed).
 It does nothing, and says why, when the clone is not on `main`, has local changes or commits, or when the running
 version was deployed by hand from another branch. `-DryRun` tells what a pass would do, `-Uninstall` removes the
-task. The last decision is in `%LOCALAPPDATA%\sessions-deskuto-update.txt`; updates are logged with the
+task. The last decision is in `%LOCALAPPDATA%\sessions-desk\auto-update.txt`; updates are logged with the
 deployments.
 
 Turn it on only for a repository where you alone can push to `main`: the machine will run whatever lands there,
