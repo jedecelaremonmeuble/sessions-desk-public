@@ -2644,7 +2644,7 @@ async function relaunch(it) {
   if (!it || it.kind !== 'open') return;
   // Sans confirmation : rien ne se perd (session inactive, invite vide exigées par le serveur ; conversation reprise).
   say(T('relance de « ' + label(it) + ' »…', 'restarting "' + label(it) + '"…'));
-  relaunching = { key: it.key, until: Date.now() + 90000 };
+  relaunching = { key: it.key, until: Date.now() + 90000, at: Date.now() };
   try { const r = await post('/api/relaunch?pid=' + it.pid);
     if (r.error) { relaunching = null; say(T('non relancée : ', 'not restarted: ') + r.error); } else { noTab.delete(it.key); say(T('relancée dans un nouvel onglet — elle réapparaît dans quelques secondes', 'restarted in a new tab — it reappears in a few seconds')); } }
   catch { relaunching = null; say(T('échec de la demande', 'request failed')); }
@@ -3469,7 +3469,7 @@ async function launchNew() {
     if (r.error) say(T('non lancée : ', 'not launched: ') + r.error);
     else { clearAttachments('new'); localStorage.setItem('cc.newcwd', cwd.value); localStorage.setItem('cc.newmodel', mo.value.trim()); if (newPrefill && newPrefill.draft) tick(); const wt = !!br.value.trim(); launching = false; closeNew();
       // La page va à la nouvelle session : sélectionnée tout de suite, gardée (pas « disparue ») le temps qu'elle apparaisse.
-      if (r.sessionId) { relaunching = { key: r.sessionId, until: Date.now() + (wt ? 180000 : 90000) }; select(r.sessionId); }
+      if (r.sessionId) { relaunching = { key: r.sessionId, until: Date.now() + (wt ? 180000 : 90000), at: Date.now(), fresh: true, wt }; select(r.sessionId); }
       say(wt ? T('onglet ouvert : création du worktree puis lancement — la page l’affiche dès qu’elle apparaît', 'tab opened: creating the worktree then launching — the page shows it as soon as it appears') : T('nouvel onglet ouvert — la page affiche la session dès qu’elle apparaît', 'new tab opened — the page shows the session as soon as it appears')); return; }
   } catch { say(T('échec de la demande', 'request failed')); }
   launching = false; if ($('nf-go')) $('nf-go').disabled = false;
@@ -3494,6 +3494,24 @@ function promptResizer(split) {
   return rz;
 }
 
+// Session lancée (ou relancée) mais pas encore dans la liste : un écran d'attente plutôt que la vue d'ensemble, le
+// temps qu'elle apparaisse (quelques secondes, plus avec un worktree). Le compteur est mis à jour à chaque relecture.
+function renderAwaiting(force) {
+  const main = $('main'), w = relaunching;
+  if (detailKey !== '__wait__' || force) {
+    detailKey = '__wait__';
+    const box = el('div', 'awaiting'), sp = el('span', 'spin');
+    const t = el('div', 'awt', w.fresh ? T('Lancement de la nouvelle session…', 'Starting the new session…') : T('Relance de la session…', 'Restarting the session…'));
+    const h = el('div', 'meta', w.wt ? T('Création du worktree puis démarrage de Claude dans le nouvel onglet — la page l’affiche dès qu’elle apparaît.', 'Creating the worktree then starting Claude in the new tab — the page shows it as soon as it appears.')
+      : T('Démarrage de Claude dans le nouvel onglet — la page l’affiche dès qu’elle apparaît.', 'Starting Claude in the new tab — the page shows it as soon as it appears.'));
+    const n = el('div', 'meta spinm'); n.id = 'awn';
+    box.append(sp, t, h, n); main.replaceChildren(box);
+    clearInterval(renderAwaiting.timer); renderAwaiting.timer = setInterval(() => { if (detailKey !== '__wait__') return clearInterval(renderAwaiting.timer); if (!awaitingRelaunch(selected)) { clearInterval(renderAwaiting.timer); renderDetail(true); } else awaitCount(); }, 1000);
+  }
+  awaitCount();
+}
+function awaitCount() { const n = $('awn'); if (n && relaunching) n.textContent = Math.round((Date.now() - relaunching.at) / 1000) + ' s'; }
+
 // Un run (hd:, run:) ou une passe (pass:) vient d'une lecture à part : tant qu'elle n'a pas eu lieu, la clé n'est pas « disparue ».
 const sourcePending = key => (/^(hd|run):/.test(key) && !runsRead && !launcherOff()) || (/^pass:/.test(key) && !autoData && !automationsOff());
 function renderDetail(force) {
@@ -3512,6 +3530,7 @@ function renderDetail(force) {
   if (bcMode) { if (detailKey !== '__bc__' || force) renderBc(); return; }
   if (findMode) { if (detailKey !== '__find__' || force) renderFind(); return; }
   const main = $('main'); const it = selected && byKey(selected);
+  if (!it && selected && awaitingRelaunch(selected)) return renderAwaiting(force);
   if (!it) {
     if (selected && data && closedData.days && !awaitingRelaunch(selected) && !sourcePending(selected)) { selected = null; sessionStorage.removeItem('cc.sel'); navReplace = true; syncRoute(); }   // session disparue : adresse corrigée, sans entrée
     if (detailKey !== '' || force) { detailKey = ''; main.replaceChildren(el('div', null), el('div', null)); main.firstChild.id = 'head'; main.lastChild.id = 'body'; }
