@@ -10,7 +10,7 @@ import { DriverClient } from './driver.ts';
 import { Server } from './http.ts';
 import { Dashboard } from './state.ts';
 import { purgeUploads } from './upload.ts';
-import { perfLine, startStallWatch, startupLine } from './stall.ts';
+import { perfLine, startStallWatch, startupLine, traceSyncOps } from './stall.ts';
 import { registerFocusProtocol } from './watch.ts';
 
 export async function start(argv: string[]): Promise<Server> {
@@ -21,6 +21,7 @@ export async function start(argv: string[]): Promise<Server> {
   const cfg = parseArgs(argv);
   const perf = join(cfg.temp, `sessions-desk-node-${cfg.port}.perf.log`);
   const stall = startStallWatch(perf);
+  traceSyncOps();   // chaque gel désigne l'appel synchrone en cours (fichier lu, programme lancé)
   const driver = new DriverClient({ exe: cfg.driverExe, log: (l) => process.stderr.write(l + '\n') });
   const d = new Dashboard(cfg, driver);
   const srv = new Server(d);
