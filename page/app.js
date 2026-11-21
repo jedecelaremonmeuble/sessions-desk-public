@@ -4228,6 +4228,13 @@ function drawLink() {
     b.replaceChildren(el('b', null, T('↻ Serveur redémarré avec une nouvelle version de la page', '↻ Server restarted with a new version of the page')), el('span', null, T(' — rechargement dès la saisie terminée, ou maintenant : ', ' — reloading once you finish typing, or now: ')), go);
   } else b.hidden = true;
 }
+/** Version en service, à côté du titre : numéro calculé à chaque merge (rang du commit dans main), commit en infobulle. */
+function renderVersion(srv) {
+  const v = $('ver'); if (!v) return;
+  const sha = srv && srv.commit ? String(srv.commit).slice(0, 10) : '', txt = srv && srv.version ? 'v' + srv.version : sha;
+  v.hidden = !txt; v.textContent = txt;
+  v.title = T('Version en service', 'Running version') + (sha ? ' · commit ' + sha : '');
+}
 /** Une lecture d'état réussie : compare le démarrage et la page à ceux qu'on connaissait. */
 function linkUp(srv) {
   const wasDown = link.down; link.down = null;
@@ -4268,7 +4275,7 @@ async function tick() {
     data = srv; skew = data.now ? Date.now() - data.now : 0; adoptPostLanguage(data.ui && data.ui.language); cfgErr(data.configError, data.configWarnings, data.configErrorKept, data.configRestart); favs = new Set(data.favs || []); hiddenSet = new Set(data.hidden || []); $('launchbtn').hidden = launcherOff(); chatsBadge();
     if (linkUp(data.server)) return;
     renderList(); renderDetail(); refreshScreen(); refreshConv(); try { renderQuota(); } catch (e) { console.log('[sessions] quota :', e); }
-    renderRelay(data.server && data.server.relay);
+    renderRelay(data.server && data.server.relay); renderVersion(data.server);
     if (pendingRoute) { const r = pendingRoute; pendingRoute = null; applyRoute(r); }      // ?view= : écran d'arrivée, une fois l'état connu
     if (pendingRun && runData) { const hd = pendingRun; pendingRun = null; openRun(hd); }   // ?run= : runs arrivés avant l'état
     if (!autoAsked && !automationsOff()) loadAutomations();                               // module annoncé par l'état : première lecture

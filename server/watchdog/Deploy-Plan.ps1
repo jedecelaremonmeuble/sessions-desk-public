@@ -49,6 +49,18 @@ function Test-PageScripts([string]$PageDir) {
     return $errors
 }
 
+<# Version d'un commit, affichée dans la page : « majeur.mineur » de server/package.json + rang du commit dans
+   l'historique — un merge (squashé) dans main = +1, rien à tenir à la main. Hors de main : suffixe « +<sha court> ». #>
+function Get-CommitVersion([string]$Repo, [string]$Head) {
+    $n = "$(git -C $Repo rev-list --count $Head)".Trim()
+    if ($LASTEXITCODE -or $n -notmatch '^\d+$') { throw 'git rev-list en échec' }
+    $base = '0.0'
+    try { $pkg = (git -C $Repo show "${Head}:server/package.json") -join "`n" | ConvertFrom-Json; if ("$($pkg.version)" -match '^(\d+\.\d+)') { $base = $Matches[1] } } catch { }
+    git -C $Repo merge-base --is-ancestor $Head origin/main 2>$null
+    if ($LASTEXITCODE) { return "$base.$n+$($Head.Substring(0, 7))" }
+    return "$base.$n"
+}
+
 <# Met la copie en service au niveau de $Head sans arrêter le serveur : page/ remplacée (plan 'page'), puis
    DEPLOYED.txt réécrit — la copie correspond désormais à $Head, base du prochain déploiement. #>
 function Update-RunCopy([string]$Repo, [string]$Head, [string]$RunDir, [string]$Plan, [string]$Running) {
@@ -78,6 +90,7 @@ function Update-RunCopy([string]$Repo, [string]$Head, [string]$RunDir, [string]$
     $onMain = (git -C $Repo rev-parse origin/main).Trim() -eq $Head
     $lines = @(Get-Content (Join-Path $RunDir 'DEPLOYED.txt'))
     $lines[0] = "commit $Head$(if ($onMain) { ' (origin/main)' } else { ' (PAS origin/main)' })"
+    $lines = @($lines[0], "version $(Get-CommitVersion $Repo $Head)") + @($lines | Select-Object -Skip 1 | Where-Object { $_ -notmatch '^version ' })
     $lines += "$(if ($Plan -eq 'page') { 'page remplacée à chaud' } else { 'rien à remplacer' }) le $(Get-Date -Format s) (serveur démarré sur $($Running.Substring(0, 10)))"
     Set-Content (Join-Path $RunDir 'DEPLOYED.txt') $lines
 }
