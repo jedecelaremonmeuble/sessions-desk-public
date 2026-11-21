@@ -619,7 +619,7 @@ export class Dashboard {
     try { this.writeStatusChanges(sess); } catch { /* idem */ }
     let quota: unknown[] = [];
     try { quota = markActiveAccount(readClaudeUsage(this.cfg), activeAccountUuid(this.cfg)); } catch { /* idem */ }
-    return { now: nowMs(), sessions: sess, reboot: this.rebootInfo(sess), restarts: restarts.slice(-40), favs: [...this.favs], hidden: [...this.hidden], drafts: this.drafts.list(), notifs: this.notifs.slice(-60), quota, promptSuggestion: promptSuggestionSetting(this.cfg), teams: this.cfg.modules.teams ? this.teamsWaits() : null, modules: modulesView(this.cfg.modules), ui: this.cfg.ui, configError: this.cfg.configError };
+    return { now: nowMs(), sessions: sess, reboot: this.rebootInfo(sess), restarts: restarts.slice(-40), favs: [...this.favs], hidden: [...this.hidden], drafts: this.drafts.list(), notifs: this.notifs.slice(-60), quota, promptSuggestion: promptSuggestionSetting(this.cfg), teams: this.cfg.modules.teams ? this.teamsWaits() : null, modules: modulesView(this.cfg.modules), ui: this.cfg.ui, configError: this.cfg.configError, configWarnings: this.cfg.configWarnings };
   }
 
   /** Get-TeamsWaits : résumé tenu par teams-watcher.ts (state/teams-waits/_summary.json), relu quand il change. */

@@ -88,6 +88,12 @@ terminal screen looks like. A Claude Code update can break it.
 Everything specific to a machine lives in `~/.claude/sessions-desk/config.json` (another path: `--config <file>`
 or the `SD_CONFIG` environment variable). The file is optional. A template is in `server/config.example.json`.
 
+Every key is described in `server/src/config.schema.json` (JSON Schema), which the server also serves at
+`http://localhost:8765/config.schema.json`. Put `"$schema": "http://localhost:8765/config.schema.json"` at the top of
+your file and an editor such as VS Code completes and checks it while the server runs. `npm run check-config` (in `server/`)
+checks the file the server reads, or the one given after `--`. The server reads a setting it does not understand as
+absent, without turning off the rest; the page lists those settings above the session list.
+
 | Key | Purpose |
 |---|---|
 | `ui.pathPrefix` | Folder prefix not repeated in the list (for instance your main repository) |

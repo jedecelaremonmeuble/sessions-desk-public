@@ -494,3 +494,6 @@ body.ro .crow .cb button { display:none; }
 .row-s.draft { --c:var(--idle); } .row-s.draft .dot { background:transparent; border:1.5px dashed var(--c); box-sizing:border-box; }
 .row-s.draft .t { font-weight:400; }
 button.danger { color:var(--waiting); } button.danger:hover { border-color:var(--waiting); }
+.cfgerr.warn { border-color:var(--ask); color:var(--ask); }
+.cfgerr ul { margin:4px 0 0; padding-left:18px; }
+.cfgerr summary { cursor:pointer; }

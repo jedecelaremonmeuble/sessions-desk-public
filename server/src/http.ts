@@ -353,6 +353,12 @@ export class Server {
           try { b = readFileSync(join(this.cfg.pageDir, f[0])); } catch (e) { reply(res, 500, 'text/plain; charset=utf-8', `${f[0]} illisible : ${(e as Error).message}`); return; }
           reply(res, 200, f[1], b); return;
         }
+        // Schéma du fichier de configuration, pour l'éditeur du poste (`"$schema": "http://localhost:8765/config.schema.json"`).
+        case '/config.schema.json': {
+          let b: Buffer;
+          try { b = readFileSync(new URL('./config.schema.json', import.meta.url)); } catch (e) { reply(res, 500, 'text/plain; charset=utf-8', `config.schema.json illisible : ${(e as Error).message}`); return; }
+          reply(res, 200, 'application/schema+json; charset=utf-8', b); return;
+        }
         case '/api/ping': {
           const age = Math.floor((nowMs() - this.#beat) / 1000);
           if (age > STALE_AFTER_SECONDS) json(res, 503, { ok: false, stale: age }); else json(res, 200, { ok: true });

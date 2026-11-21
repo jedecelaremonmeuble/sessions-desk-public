@@ -62,6 +62,7 @@ import { readFileSync } from 'node:fs';
 import { parsePeers } from './peers.ts';
 import { isAbsolute, join } from 'node:path';
 import { parseShortcuts, type Shortcut } from './commands.ts';
+import { describe, validate } from './schema.ts';
 
 export interface LauncherModule { root: string; cli: string; python: string; ticketApi: string; cardsApi: string }
 /** Ce que la page affiche et qui dépend du poste : préfixe de chemin à ne pas répéter, adresses des PR et des tickets. */
@@ -261,15 +262,23 @@ export interface Settings { modules: Modules; ui: UiConfig; claudeArgs: string; 
   /** Autres postes du même propriétaire dont les sessions s'affichent ici (peers.ts). */
   peers: string[];
   /** Fichier présent mais illisible (JSON invalide) : le message, avec la position. null : lu, ou absent. */
-  error: string | null }
+  error: string | null;
+  /** Lu, mais pas conforme au schéma (config.schema.json) : une ligne par réglage ignoré ou refusé. */
+  warnings: string[] }
 export function loadSettings(file: string, env: PathEnv): Settings {
-  const none = (error: string | null): Settings => ({ modules: { ...NO_MODULES }, ui: { ...NO_UI }, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, newFolders: [], peers: [], error });
+  const none = (error: string | null): Settings => ({ modules: { ...NO_MODULES }, ui: { ...NO_UI }, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, newFolders: [], peers: [], error, warnings: [] });
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch { return none(null); }   // absent : rien d'allumé, ce n'est pas une erreur
   let raw: unknown;
   // Illisible : tout reste éteint, mais on le DIT (un seul fichier porte tous les modules : une virgule de trop les éteint tous).
   try { raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); } catch (e) { return none(`${file} : ${(e as Error).message}`); }
   const ts = parseTailscale(raw, env);
-  return { modules: parseModules(raw, env), ui: parseUi(raw, env), claudeArgs: parseClaudeArgs(raw), delays: parseDelays(raw), tagVocab: parseTagVocab(raw), newFolders: parseNewSessionFolders(raw, env), peers: parsePeers(raw), error: null, ...(ts !== undefined ? { tailscaleExe: ts } : {}) };
+  return { modules: parseModules(raw, env), ui: parseUi(raw, env), claudeArgs: parseClaudeArgs(raw), delays: parseDelays(raw), tagVocab: parseTagVocab(raw), newFolders: parseNewSessionFolders(raw, env), peers: parsePeers(raw), error: null, warnings: configWarnings(raw), ...(ts !== undefined ? { tailscaleExe: ts } : {}) };
+}
+/** Écarts au schéma, 20 au plus (au-delà : « … et N autres »). Le schéma illisible ne doit jamais empêcher de lire la config. */
+export function configWarnings(raw: unknown): string[] {
+  let lines: string[];
+  try { lines = describe(validate(raw)); } catch (e) { return [`config.schema.json : ${(e as Error).message}`]; }
+  return lines.length > 20 ? [...lines.slice(0, 20), `… et ${lines.length - 20} autres`] : lines;
 }
 export const loadModules = (file: string, env: PathEnv): Modules => loadSettings(file, env).modules;

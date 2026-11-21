@@ -1,0 +1,701 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sessions-desk machine configuration (~/.claude/sessions-desk/config.json)",
+  "description": "Every key is optional. A missing or invalid module stays off.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "path": {
+      "type": "string",
+      "description": "Absolute path; ~, %USERPROFILE%, %LOCALAPPDATA% and %TEMP% are expanded.",
+      "maxLength": 400
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v": {
+          "type": "string",
+          "description": "Tag value.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "re": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "regex"
+          },
+          "description": "Regexes on the repo-relative path (lowercase, '/')."
+        }
+      },
+      "required": [
+        "v",
+        "re"
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This schema, for editors."
+    },
+    "modules": {
+      "description": "Optional integrations, off unless named here.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "launcher": {
+          "description": "External orchestrator that runs sessions without a terminal.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "root": {
+              "$ref": "#/$defs/path",
+              "description": "Data folder of the external orchestrator (runs, state.json...). Required to turn the module on."
+            },
+            "cli": {
+              "$ref": "#/$defs/path",
+              "description": "Script that receives the orders typed in the page."
+            },
+            "python": {
+              "type": "string",
+              "description": "Python interpreter.",
+              "maxLength": 400
+            },
+            "ticketApi": {
+              "$ref": "#/$defs/path",
+              "description": "Ticket script: python <ticketApi> ticket <id>."
+            },
+            "cardsApi": {
+              "$ref": "#/$defs/path",
+              "description": "Cards script."
+            }
+          },
+          "required": [
+            "root"
+          ]
+        },
+        "teams": {
+          "description": "Teams reply waits, held by teams-watcher.ts.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Turns the Teams module on."
+            },
+            "reminders": {
+              "type": "boolean",
+              "description": "Automatic reminders to colleagues."
+            },
+            "ownerName": {
+              "type": "string",
+              "description": "Owner's name in the prompts sent to sessions.",
+              "maxLength": 80
+            },
+            "mail": {
+              "type": "boolean",
+              "description": "Also watch replies to Outlook emails (asks Mail.Read)."
+            },
+            "markRead": {
+              "type": "boolean",
+              "description": "Mark a thread read in Teams once a session has read it (asks Chat.ReadWrite)."
+            },
+            "tenant": {
+              "type": "string",
+              "description": "Microsoft Entra tenant.",
+              "maxLength": 100
+            },
+            "clientId": {
+              "type": "string",
+              "description": "Application (client) id used to sign in.",
+              "maxLength": 100
+            },
+            "scope": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "mailScope": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "readScope": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "sendScope": {
+              "type": "string",
+              "maxLength": 400
+            },
+            "serverUrl": {
+              "type": "string",
+              "description": "Address of this server, for the watcher.",
+              "pattern": "^https?://[^\\s\"'<>]+$"
+            },
+            "calendar": {
+              "description": "Reminder calendar (Europe/Paris).",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "dayStart": {
+                  "type": "integer",
+                  "description": "Working day start (hour).",
+                  "minimum": 0,
+                  "maximum": 23
+                },
+                "dayEnd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 24
+                },
+                "laterAt": {
+                  "type": "integer",
+                  "description": "Hour of the next-day reminder.",
+                  "minimum": 0,
+                  "maximum": 23
+                },
+                "firstAfterHours": {
+                  "type": "number",
+                  "description": "First reminder after this many working hours.",
+                  "minimum": 0
+                },
+                "maxReminders": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "expireDays": {
+                  "type": "integer",
+                  "description": "Closed after this many working days.",
+                  "minimum": 1,
+                  "maximum": 60
+                }
+              }
+            },
+            "inbound": {
+              "description": "Incoming requests.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Open a session for an incoming request."
+                },
+                "cwd": {
+                  "$ref": "#/$defs/path",
+                  "description": "Folder of the session opened."
+                },
+                "model": {
+                  "type": "string",
+                  "description": "Model of that session ('' = default).",
+                  "maxLength": 60
+                },
+                "domains": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "description": "Email domains of internal colleagues; anyone else is ignored."
+                },
+                "settleMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "liveTalkMs": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "maxPerHour": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              }
+            },
+            "export": {
+              "description": "Copy business decisions to their ticket.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "description": "Command that copies a business decision to its ticket, e.g. [\"python\", \"C:/tools/tickets.py\", \"validationnote\"].",
+                  "maxItems": 20
+                },
+                "ticketPattern": {
+                  "type": "string",
+                  "description": "Ticket reference; group 1 is the id passed to the command.",
+                  "format": "regex"
+                }
+              },
+              "required": [
+                "command",
+                "ticketPattern"
+              ]
+            },
+            "conversations": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Per-conversation view of every active chat."
+                },
+                "days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 90
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "mute": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "description": "Sender names treated as applications."
+                },
+                "threads": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 200
+                },
+                "reply": {
+                  "type": "boolean",
+                  "description": "Reply from the page (asks ChatMessage.Send)."
+                }
+              }
+            }
+          }
+        },
+        "tickets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "description": "Ticket references quoted in prompts (must not match the empty string).",
+              "format": "regex"
+            }
+          },
+          "required": [
+            "pattern"
+          ]
+        },
+        "quota": {
+          "description": "Weekly quota per Claude account.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "description": "Built-in probe (Claude Code /usage screen).",
+              "enum": [
+                "usage-probe"
+              ]
+            },
+            "file": {
+              "$ref": "#/$defs/path",
+              "description": "Reading of an external collector."
+            }
+          }
+        },
+        "automations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Lowercase letters, digits and '-', 40 characters at most.",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "icon": {
+                "type": "string",
+                "maxLength": 8
+              },
+              "everyMinutes": {
+                "type": "number",
+                "description": "Period of the scheduled task.",
+                "minimum": 1,
+                "maximum": 10080
+              },
+              "history": {
+                "$ref": "#/$defs/path",
+                "description": "JSONL history, one line per pass (key `pass`)."
+              },
+              "runs": {
+                "$ref": "#/$defs/path",
+                "description": "Folder of its passes."
+              },
+              "cli": {
+                "$ref": "#/$defs/path"
+              },
+              "python": {
+                "type": "string",
+                "maxLength": 400
+              },
+              "orders": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Lowercase letters, digits and '-', 40 characters at most.",
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "pattern": "^[^\\r\\n\"]*$"
+                      },
+                      "maxItems": 20
+                    },
+                    "confirm": {
+                      "type": "string",
+                      "description": "Question asked before running.",
+                      "maxLength": 400
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "args"
+                  ]
+                },
+                "description": "\"Run now\" buttons: python <cli> <args...>.",
+                "maxItems": 6
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "history"
+            ]
+          },
+          "description": "Scheduled scripts of this machine.",
+          "maxItems": 20
+        }
+      }
+    },
+    "ui": {
+      "description": "Display settings of this machine.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pathPrefix": {
+          "$ref": "#/$defs/path",
+          "description": "Path prefix not repeated in the page."
+        },
+        "prUrl": {
+          "type": "string",
+          "description": "Pull-request address prefix.",
+          "pattern": "^https?://[^\\s\"'<>]+$"
+        },
+        "ticketUrl": {
+          "type": "string",
+          "description": "Ticket address prefix.",
+          "pattern": "^https?://[^\\s\"'<>]+$"
+        },
+        "ticketLabel": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "language": {
+          "description": "Page language ('' = the browser's).",
+          "enum": [
+            "",
+            "en",
+            "fr"
+          ]
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "match": {
+                "type": "string",
+                "description": "Part of the model id; the first matching entry wins.",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 30
+              },
+              "cost": {
+                "type": "number",
+                "description": "Multiplier relative to the reference model (cost 1).",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "offer": {
+                "type": "boolean",
+                "description": "Offered in the New session form."
+              }
+            },
+            "required": [
+              "match",
+              "cost"
+            ]
+          },
+          "description": "Relative cost of each model; replaces the default table.",
+          "maxItems": 30
+        },
+        "quota": {
+          "description": "Weekly quota thresholds (%); warn < alert.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warn": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "alert": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "shortcuts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "command": {
+                "type": "string",
+                "description": "A \"/\" command.",
+                "pattern": "^/",
+                "maxLength": 200
+              },
+              "confirm": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "label",
+              "command"
+            ]
+          },
+          "description": "Buttons that send a ready-made \"/\" command; [] = none.",
+          "maxItems": 8
+        }
+      }
+    },
+    "claudeArgs": {
+      "type": "string",
+      "description": "Options passed to claude when the page opens a session.",
+      "maxLength": 200,
+      "pattern": "^[^;\\r\\n]*$"
+    },
+    "delays": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "notifyAfterSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "notifyDoneAfterMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1440
+        },
+        "closedDays": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 365
+        }
+      }
+    },
+    "tailscaleExe": {
+      "type": "string",
+      "description": "Path of tailscale.exe; '' = no remote access.",
+      "maxLength": 400
+    },
+    "newSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/path"
+          },
+          "description": "Folders always offered by New session.",
+          "maxItems": 50
+        }
+      }
+    },
+    "peers": {
+      "description": "Your other machines (names on the tailnet) whose sessions join this list.",
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "pattern": "^\\s*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\s*$"
+      }
+    },
+    "tagger": {
+      "description": "Rules of the session tagger (tagger.ts).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "description": "Closed list of business domains."
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rule"
+          },
+          "description": "A file written or read gives these tags (first matching tool only)."
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rule"
+          }
+        },
+        "toolsWithoutTopic": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 60
+          }
+        },
+        "docs": {
+          "description": "docs/claude/<name>.md -> domain.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "re": {
+                "type": "string",
+                "description": "Group 1 is the repo-relative path.",
+                "format": "regex"
+              },
+              "prefix": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "required": [
+              "re"
+            ]
+          }
+        },
+        "worktrees": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "regex"
+          },
+          "description": "Group 1 is a worktree name."
+        },
+        "deepDirs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "genericWords": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 60
+          }
+        },
+        "context": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "maxBytesPerPass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxHdLookupsPerPass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "llmModel": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "llmBatch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "maxLlmBatchesPerPass": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "llmQuotaMaxPct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "llmIdleMinutes": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
