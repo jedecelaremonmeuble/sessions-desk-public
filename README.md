@@ -97,11 +97,33 @@ or the `SD_CONFIG` environment variable). The file is optional. A template is in
 | `ui.shortcuts` | Buttons under the reply box that send a ready-made slash command in one click: `[{ "label": "Reconnect MCP", "command": "/mcp reconnect all", "confirm": "" }]`, 8 at most. Absent: two defaults (reconnect MCP servers, compact). Empty list: no button |
 | `delays` | `{ "notifyAfterSeconds": 15, "notifyDoneAfterMinutes": 3, "closedDays": 14 }` — the command-line options of the same role win |
 | `tailscaleExe` | Path to `tailscale.exe` (`""` turns remote access off); default: the standard install folder |
+| `peers` | Your other machines whose sessions join this list: `["laptop"]` — see [Several machines](#several-machines) |
 | `ui.language` | `en` or `fr`: the page language on this machine (default: the browser's) |
 | `modules` | The optional modules below |
 
 Paths may use `~`, `%USERPROFILE%`, `%LOCALAPPDATA%` and `%TEMP%`. A missing or malformed entry is ignored: the
 server never fails to start because of this file.
+
+### Several machines
+
+If you run Sessions Desk on more than one machine of the same Tailscale account, one page can list them all. On each
+machine, name the others by their tailnet machine name:
+
+```json
+{ "peers": ["laptop", "home-pc"] }
+```
+
+Each machine must run its own server on 8765 and be served on the tailnet (`tailscale serve --bg 8766`). The server
+then reads the session list of its peers while a page is open, and relays a closed list of requests to them: read a
+screen or a conversation, reply, answer a dialog, mark as seen. Sessions of another machine carry a 🖧 badge; type
+`poste:laptop` in the search box (or click the badge) to show one machine only.
+
+- Nothing is copied: transcripts, favourites and tags stay on the machine that runs the session.
+- No new secret and no new port: a peer answers only its owner, identified by `tailscale serve`, exactly as for a
+  browser. Closing, restarting or starting a session, and attaching a file, are not relayed — do them on that
+  machine's own page.
+- A machine that is off or asleep shows as one "unreachable" line; the rest of the list is unaffected.
+- Keep the machines on close versions: a peer running an older server may not know a relayed route.
 
 ### Optional modules
 
@@ -219,6 +241,8 @@ Read this before you run it.
   the API and type into your sessions.
 - **It can type into terminals.** Anything that can make the server send text to a session can run commands as
   you, within what that session is allowed to do.
+- **With `peers` set, machines trust each other.** Whatever can call the local API of one machine can read and type
+  into the sessions of your other machines through the relay. List only machines you would let do that.
 - **Screens and transcripts contain secrets.** Whatever a session printed is readable through the dashboard.
 - The server listens on loopback only, checks the `Origin` of every action, and serves remote requests only
   through `tailscale serve`.

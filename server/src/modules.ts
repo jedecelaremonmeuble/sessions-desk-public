@@ -28,6 +28,8 @@
 // - delays : notification d'une session qui attend (s), d'une session terminée après un long tour (min), fenêtre
 //   des sessions fermées (jours). Les options --notify-after, --notify-done-after, --closed-days passent avant.
 // - tailscaleExe : chemin de tailscale.exe ("" : pas d'accès distant). L'option --tailscale passe avant.
+// - peers : ["autre-poste"] — noms, sur le tailnet, de tes autres postes qui font tourner ce serveur : leurs sessions
+//   s'ajoutent à la liste de celui-ci (peers.ts). Absente : rien ne change.
 //
 // - ui.models : coût relatif de chaque modèle, pour que la page dise d'un coup d'œil qu'une session coûte plus cher.
 //   `match` = morceau de l'identifiant du modèle (« fable », « claude-opus-5-5 » ; la première entrée qui correspond
@@ -54,6 +56,7 @@
 //
 // Fichier absent, illisible ou module mal décrit ⇒ module éteint : jamais une erreur au démarrage.
 import { readFileSync } from 'node:fs';
+import { parsePeers } from './peers.ts';
 import { isAbsolute, join } from 'node:path';
 import { parseShortcuts, type Shortcut } from './commands.ts';
 
@@ -236,16 +239,18 @@ export function parseTagVocab(raw: unknown): TagVocab {
 }
 
 export interface Settings { modules: Modules; ui: UiConfig; claudeArgs: string; delays: Delays; tailscaleExe?: string; tagVocab: TagVocab;
+  /** Autres postes du même propriétaire dont les sessions s'affichent ici (peers.ts). */
+  peers: string[];
   /** Fichier présent mais illisible (JSON invalide) : le message, avec la position. null : lu, ou absent. */
   error: string | null }
 export function loadSettings(file: string, env: PathEnv): Settings {
-  const none = (error: string | null): Settings => ({ modules: { ...NO_MODULES }, ui: { ...NO_UI }, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, error });
+  const none = (error: string | null): Settings => ({ modules: { ...NO_MODULES }, ui: { ...NO_UI }, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, peers: [], error });
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch { return none(null); }   // absent : rien d'allumé, ce n'est pas une erreur
   let raw: unknown;
   // Illisible : tout reste éteint, mais on le DIT (un seul fichier porte tous les modules : une virgule de trop les éteint tous).
   try { raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); } catch (e) { return none(`${file} : ${(e as Error).message}`); }
   const ts = parseTailscale(raw, env);
-  return { modules: parseModules(raw, env), ui: parseUi(raw, env), claudeArgs: parseClaudeArgs(raw), delays: parseDelays(raw), tagVocab: parseTagVocab(raw), error: null, ...(ts !== undefined ? { tailscaleExe: ts } : {}) };
+  return { modules: parseModules(raw, env), ui: parseUi(raw, env), claudeArgs: parseClaudeArgs(raw), delays: parseDelays(raw), tagVocab: parseTagVocab(raw), peers: parsePeers(raw), error: null, ...(ts !== undefined ? { tailscaleExe: ts } : {}) };
 }
 export const loadModules = (file: string, env: PathEnv): Modules => loadSettings(file, env).modules;

@@ -63,6 +63,7 @@
     ]
   },
   "claudeArgs": "",
+  "peers": [],
   "tagger": {
     "domains": [
       "Billing",

@@ -80,6 +80,7 @@ body.ro .twaits .twb { display:none; }
 /* Session FERMÉE (plus de terminal) : point creux, titre grisé en italique — partout où elle apparaît. */
 .closed .dot { background:transparent; box-shadow:inset 0 0 0 1.5px var(--c); }
 .row-s.closed .t, .fhit.closed .ft > span:nth-child(2) { font-style:italic; color:var(--mute); }
+.tag.mach { color:var(--busy); font-style:normal; cursor:pointer; white-space:nowrap; } .rbanner.peerdown { color:var(--mute); }
 .tag.cl { color:var(--mute); font-style:normal; } .tag.hid { color:var(--ask); font-style:normal; }
 .tag.drift { color:var(--mute); font-style:normal; font-weight:normal; }
 .banner { margin:14px 0 4px; padding:10px 14px; border:1px dashed var(--line); border-radius:8px; color:var(--mute); } .banner.delivering { border-style:solid; color:var(--ink); margin:0 0 10px; }
