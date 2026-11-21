@@ -1,4 +1,4 @@
-// Surveillance des réponses Teams (le cadrage, lot 1) : règles pures et
+// Surveillance des réponses Teams : règles pures et
 // fichiers d'attente sur un dossier temporaire. Aucun appel réseau.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -105,7 +105,7 @@ describe('fichiers', () => {
     expect(s.model).toBe('x'); expect(s.hooks.Stop).toHaveLength(1);
     expect(s.hooks.PostToolUse).toEqual([{ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: '"node" "teams-watcher.ts" record', timeout: 15 }] }]);
   });
-  test('installation du hook : celui du lot 1 (Teams seul) est élargi aux outils Outlook, une fois', () => {
+  test('installation du hook : le premier (Teams seul) est élargi aux outils Outlook, une fois', () => {
     dir = mkdtempSync(join(tmpdir(), 'tw-'));
     const p = join(dir, 'settings.json');
     writeFileSync(p, JSON.stringify({ hooks: { PostToolUse: [{ matcher: TOOL, hooks: [{ type: 'command', command: '"node" "x/teams-watcher.ts" record', timeout: 15 }] }] } }));
@@ -163,7 +163,7 @@ describe('relances (D6, D9)', () => {
   });
 });
 
-describe('fichiers (lot 2)', () => {
+describe('fichiers', () => {
   let dir = '';
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
   test('la relance envoyée après le réveil continue la chaîne ; un message sans réveil repart de zéro', () => {
@@ -194,7 +194,7 @@ describe('fichiers (lot 2)', () => {
   });
 });
 
-describe('demandes entrantes (lot 3)', () => {
+describe('demandes entrantes', () => {
   const T0 = P(2026, 11, 19, 15, 41), IC = { ...defaultInbound, cwd: 'C:\\travail', domains: ['exemple.fr', 'exemple.org'] }, OTHER = 'camille-oid';
   // La vraie rafale du 19/11 : salutation, question, précision, lien — 80 s en tout.
   const burst = () => [
@@ -277,7 +277,7 @@ describe('demandes entrantes (lot 3)', () => {
       expect(await runInbound(dir, cfg, ME, new Set(), w.deps, { dryRun: false, now: T0 + 300_000 })).toMatchObject({ seen: 1, opened: 1, errors: [] });
       expect(w.calls.opened).toHaveLength(1);
       expect(w.calls.opened[0]).toMatchObject({ sid: 'sid-1' });
-      // Lot 8 : le fil confié à une session est à marquer lu — pas une rafale en attente, ni une passe à blanc.
+      // le fil confié à une session est à marquer lu — pas une rafale en attente, ni une passe à blanc.
       expect((await runInbound(dir, cfg, ME, new Set(), world(w.messages).deps, { dryRun: false, now: T0 + 420_000 })).read).toEqual([]);
       expect(w.calls.opened[0]!.prompt).toContain('t/111111');
       expect(state().chats[CHAT]).toMatchObject({ sessionId: 'sid-1', handledAt: T0 + 79_000, internal: true, label: 'Camille MARTIN', from: 'Camille' });
@@ -324,7 +324,7 @@ describe('demandes entrantes (lot 3)', () => {
   });
 });
 
-describe('fils lus (lot 8)', () => {
+describe('fils lus', () => {
   let dir = '';
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
   const jwt = (payload: unknown) => `x.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.y`;

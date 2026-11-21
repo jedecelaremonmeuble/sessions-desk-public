@@ -1,10 +1,10 @@
 // SERVEUR HTTP — portage de la façade C# (Front) et de la boucle PowerShell de legacy/sessions-dashboard.ps1.
 //
-// Comme le .ps1 : la FAÇADE répond tout de suite à la page, au ping, à l'état et aux fermées (instantanés recalculés
+// La FAÇADE répond tout de suite à la page, au ping, à l'état et aux fermées (instantanés recalculés
 // chaque seconde / toutes les 15 s), à l'écran d'une session, à la conversation, aux pièces jointes et au hook ; tout
 // le reste passe par une FILE traitée une requête à la fois (la « boucle » : actions, recherche, dossiers, lanceur),
 // entre deux calculs d'état — jamais en même temps qu'eux. Mêmes en-têtes, mêmes codes, mêmes refus d'accès.
-// En plus du .ps1 : --allow-write absent ⇒ toute action est refusée (serveur À CÔTÉ en lecture seule).
+// Hors du serveur principal, --allow-write absent ⇒ toute action est refusée (instance à côté, en lecture seule).
 import { langOf, T, withLang } from './i18n.ts';
 import { UsageProbe } from './usage-probe.ts';
 import { PEER_GET, PEER_HEADER, PEER_POST, Peers, peerRoute } from './peers.ts';
@@ -595,7 +595,7 @@ export class Server {
         case '/api/close': if (knownPid) body = JSON.stringify(await this.actions.close(target, q.get('force') === '1')); else { status = 400; body = '{}'; } break;
         case '/api/relaunch': if (knownPid) body = JSON.stringify({ error: await this.actions.relaunch(target) }); else { status = 400; body = '{}'; } break;
         case '/api/fav': this.d.setFav(q.get('id') ?? '', q.get('on') === '1'); body = '{"ok":true}'; break;
-        case '/api/tags': {                              // correction à la main (lot 3) : Set-SessionTag
+        case '/api/tags': {                              // correction à la main : Set-SessionTag
           const j = await payload();
           const id = isObjBody(j) ? pget(j, 'id') : null, axis = isObjBody(j) ? pget(j, 'axis') : null, v = isObjBody(j) ? pget(j, 'v') : null;
           if (typeof id !== 'string' || typeof axis !== 'string' || typeof v !== 'string') { status = 400; body = '{}'; break; }
@@ -652,7 +652,7 @@ export class Server {
         }
         case '/api/folders': body = JSON.stringify({ folders: await this.d.newFolders() }); break;
         case '/api/tag-vocab': body = JSON.stringify(this.d.tagVocab()); break;
-        case '/api/teams-wait': {                        // boutons des attentes Teams (lot 2) : Invoke-TeamsWaitAction
+        case '/api/teams-wait': {                        // boutons des attentes Teams : Invoke-TeamsWaitAction
           const j = await payload();
           if (!isObjBody(j)) { status = 400; body = '{}'; break; }
           const action = psString(pget(j, 'action')), sid = psString(pget(j, 'sessionId')), mid = psString(pget(j, 'messageId'));
@@ -663,17 +663,17 @@ export class Server {
           body = JSON.stringify({ error: err });
           break;
         }
-        case '/api/teams-conversations': {               // vue par conversation (lot 9) : tous les chats actifs, calculée à la demande
+        case '/api/teams-conversations': {               // vue par conversation : tous les chats actifs, calculée à la demande
           const v = conversationsView(this.d.sf('teams-waits'), nowMs());
           body = JSON.stringify(v ?? { at: 0, since: 0, rows: null });
           break;
         }
-        case '/api/teams-thread': {                      // fil d'une conversation (lot 10) : derniers messages lus par le veilleur, en entier
+        case '/api/teams-thread': {                      // fil d'une conversation : derniers messages lus par le veilleur, en entier
           const v = conversationThread(this.d.sf('teams-waits'), q.get('chatId') ?? '');
           if (!v) { status = 404; body = '{}'; } else body = JSON.stringify(v);
           break;
         }
-        case '/api/teams-reply': {                       // « Répondre » d'une conversation (lot 10) : le veilleur poste, au nom de l'utilisateur
+        case '/api/teams-reply': {                       // « Répondre » d'une conversation : le veilleur poste, au nom de l'utilisateur
           const j = await payload();
           if (!isObjBody(j)) { status = 400; body = '{}'; break; }
           const chatId = psString(pget(j, 'chatId')), text = psString(pget(j, 'text'));
@@ -683,7 +683,7 @@ export class Server {
           body = JSON.stringify({ error: err });
           break;
         }
-        case '/api/teams-link': {                        // « Confier » / « Détacher » un fil (lot 11) : lien chat → session, remise par le veilleur
+        case '/api/teams-link': {                        // « Confier » / « Détacher » un fil : lien chat → session, remise par le veilleur
           const j = await payload();
           if (!isObjBody(j)) { status = 400; body = '{}'; break; }
           const action = psString(pget(j, 'action')), chatId = psString(pget(j, 'chatId')), sid = psString(pget(j, 'sessionId'));

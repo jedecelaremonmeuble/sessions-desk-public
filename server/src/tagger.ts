@@ -34,7 +34,7 @@ export interface TaggerConfig {
   context: string;
   /** Relevé du quota (claude-usage.json du lanceur) : '' si inconnu. */
   usageFile: string;
-  /** Lot 2 : petit modèle pour la fonctionnalité. Lots de `llmBatch` sessions, au plus `maxLlmBatchesPerPass` appels par
+  /** petit modèle pour la fonctionnalité. Lots de `llmBatch` sessions, au plus `maxLlmBatchesPerPass` appels par
    *  passe, aucun appel si le quota de la semaine atteint `llmQuotaMaxPct` %. */
   llmModel?: string; llmBatch?: number; maxLlmBatchesPerPass?: number; llmQuotaMaxPct?: number; llmIdleMinutes?: number;
 }
@@ -52,7 +52,7 @@ export interface Acc {
   /** Nature d'une session lancée par un script, lue dans son 1er message : diag, dev, relecture, recette, reprise
    *  (le lanceur), `automate:<script>` (autre script), null (session tapée par quelqu'un). */
   kind: string | null;
-  /** Lot 2 : titre de la session (dernier ai-title / custom-title), début du 1er message, nombre de messages tapés. */
+  /** titre de la session (dernier ai-title / custom-title), début du 1er message, nombre de messages tapés. */
   title: string | null; firstText: string; users: number;
 }
 /** Version de la forme de `acc` : un fichier plus ancien est relu depuis le début (les champs manquants n'y sont pas). */
@@ -240,7 +240,7 @@ function ranked(score: Map<string, number>): [string, number][] {
 }
 
 /** Les tags d'une session, de ce que la lecture a relevé, du domaine HD de son ticket (null : inconnu) et de ce
- *  qu'a proposé le petit modèle (lot 2 ; null : pas encore demandé). */
+ *  qu'a proposé le petit modèle (null : pas encore demandé). */
 export function decide(acc: Acc, hdDomain: string | null, cfg: TaggerConfig, llm: LlmResult | null = null): Tag[] {
   const c = compile(cfg);
   const tags: Tag[] = [];
@@ -330,7 +330,7 @@ export function readFrom(path: string, acc: Acc, size: number, budget: number): 
   } finally { closeSync(fd); }
 }
 
-// ───── Petit modèle (lot 2) ─────
+// ───── Petit modèle ─────
 export interface LlmItem { id: string; origine: string; titre: string | null; demande: string | null; message: string; dossiers: string[]; worktree: string | null }
 
 /** Les dossiers (2 niveaux sous la racine du dépôt) des fichiers écrits, sinon lus : de quoi situer sans le contenu. */
@@ -418,7 +418,7 @@ export interface PassOptions {
   projectsDir: string; outDir: string; cfg: TaggerConfig; now?: number;
   /** Domaine et titre HD d'un ticket (« 990033 ») ; undefined = indisponible (réessayé à la passe suivante). */
   hdLookup: (id: string) => HdInfo | null | undefined;
-  /** Petit modèle (lot 2) ; absent = pas de proposition à cette passe (quota, essai à blanc). */
+  /** Petit modèle ; absent = pas de proposition à cette passe (quota, essai à blanc). */
   llm?: ((prompt: string) => string | undefined) | undefined;
 }
 export interface PassResult {
@@ -440,7 +440,7 @@ export function runPass(o: PassOptions): PassResult {
   let hdCache: Record<string, HdEntry> = {};
   try { hdCache = JSON.parse(readFileSync(cachePath, 'utf8')); } catch { /* premier passage */ }
   let cacheDirty = false;
-  // Une entrée sans `title` (lot 1) est relue pour avoir le titre de la demande, dans le budget de la passe.
+  // Une entrée sans `title` est relue pour avoir le titre de la demande, dans le budget de la passe.
   const hdOf = (hd: string): { info: HdInfo; pending: boolean } => {
     const id = hd.replace(/^[^0-9]*/, '') || hd; const e = hdCache[id];
     const cached: HdInfo = { domain: e?.domain ?? null, title: e?.title ?? null };
@@ -479,7 +479,7 @@ export function runPass(o: PassOptions): PassResult {
     try { prev = JSON.parse(readFileSync(out, 'utf8')); } catch { /* jamais tagué */ }
     if (prev && prev.accVersion !== ACC_VERSION) prev = { ...prev, acc: newAcc(), llm: prev.llm ?? null };   // forme ancienne : relire
     let tf: TagFile, hdDomain: string | null = null, hdTitle: string | null = null;
-    // v3 : la demande HD dont le titre n'est pas encore connu (cache du lot 1, budget épuisé) retient la question au
+    // v3 : la demande HD dont le titre n'est pas encore connu (ancien cache, budget épuisé) retient la question au
     // petit modèle — sans lui, une session du lanceur n'offre que la consigne du lanceur (« demande-sans-titre »).
     const titleKnown = (hd: string): boolean => { const e = hdCache[hd.slice(3)]; return !!e && 'title' in e; };
     if (prev && prev.transcriptLen === f.size && prev.rulesVersion === o.cfg.rulesVersion && !prev.hdPending && prev.acc.offset === f.size) {

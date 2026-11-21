@@ -1,10 +1,11 @@
-// Réglages du serveur — les paramètres de legacy/sessions-dashboard.ps1, plus ce que la cohabitation impose.
+// Réglages du serveur — ligne de commande et config.json du poste.
 //
-// Cohabitation (lot 2b, étape 4) : le serveur Node tourne À CÔTÉ du .ps1 (8767, relais 8768) et lit les mêmes
-// fichiers. Le seul point de conflit est l'écriture (favoris, masquage, journal des envois…) : il est donc en
-// LECTURE SEULE par défaut (--allow-write pour écrire), et en rôle « side » il ne fait aucune tâche de fond qui
+// Deux rôles. Sur 8765 (ou --primary) : le serveur PRINCIPAL du poste, écriture permise, tâches de fond, fichiers
+// d'état sans suffixe. Ailleurs (8767 par défaut) : une instance SECONDAIRE à côté du principal, qui lit les mêmes
+// fichiers. Le seul point de conflit est l'écriture (favoris, masquage, journal des envois…) : elle est donc en
+// LECTURE SEULE par défaut (--allow-write pour écrire), et en rôle « side » elle ne fait aucune tâche de fond qui
 // écrit dans un fichier partagé ou se voit (notifications, index de recherche, état des PR, « vu », alertes du
-// lanceur) : le .ps1 de production s'en charge. Rôle « primary » = après la bascule sur 8765 (étape 5).
+// lanceur) : le principal s'en charge. Ce rôle vient de la migration depuis le serveur PowerShell historique.
 import { existsSync, unwatchFile, watchFile } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

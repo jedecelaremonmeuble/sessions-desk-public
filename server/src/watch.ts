@@ -1,7 +1,7 @@
 // SURVEILLANCE (toutes les 2 s, page ouverte ou non) — Watch-Waiting, Send-Notif, Update-SeenFromForeground,
-// Register-FocusProtocol, Send-TeamsAlerts du .ps1. Rôle « side » (à côté du .ps1) : seules les lectures (état git,
-// qui va dans un fichier suffixé) tournent ; notifications, « vu », alertes du lanceur et Teams, état des PR restent
-// au .ps1.
+// Register-FocusProtocol, Send-TeamsAlerts du serveur PowerShell historique. Rôle « side » (instance à côté du
+// principal) : seules les lectures (état git, qui va dans un fichier suffixé) tournent ; notifications, « vu », alertes
+// du lanceur et Teams, état des PR restent au serveur principal.
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { refreshPrs, startGitRefresh } from './gitpr.ts';

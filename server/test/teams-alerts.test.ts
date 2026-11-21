@@ -1,4 +1,4 @@
-// Send-TeamsAlerts porté dans Node (rôle primary, bascule de l'étape 5) : une alerte par message, jamais deux, et
+// Send-TeamsAlerts porté dans Node (serveur principal) : une alerte par message, jamais deux, et
 // rien pour une alerte déjà ancienne au démarrage.
 import { describe, expect, it } from 'vitest';
 import type { Session } from '../src/state.ts';

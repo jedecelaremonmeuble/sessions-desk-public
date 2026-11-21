@@ -153,7 +153,7 @@ describe('passe', () => {
   });
 });
 
-describe('petit modèle (lot 2)', () => {
+describe('petit modèle', () => {
   let root = '';
   afterEach(() => { if (root) rmSync(root, { recursive: true, force: true }); });
   const ID = '11111111-2222-3333-4444-555555555555', AUTO = '22222222-2222-3333-4444-555555555555', NEW = '33333333-2222-3333-4444-555555555555';
@@ -230,7 +230,7 @@ describe('petit modèle (lot 2)', () => {
     const proj = join(root, 'projects', 'C--x'); mkdirSync(proj, { recursive: true }); const out = join(root, 'tags');
     mkdirSync(out, { recursive: true });
     writeFileSync(join(proj, ID + '.jsonl'), [user('Session de DÉVELOPPEMENT automatique, lancée par `scripts/AutoDiagnostic/auto_dev.py`. HD-333333', { entrypoint: 'sdk-cli' }), title('Correctif')].join('\n') + '\n');
-    writeFileSync(join(out, '_hd-domains.json'), JSON.stringify({ '333333': { domain: 'Partenaires', at: Date.now() } }));   // entrée du lot 1 : sans titre
+    writeFileSync(join(out, '_hd-domains.json'), JSON.stringify({ '333333': { domain: 'Partenaires', at: Date.now() } }));   // entrée de l’ancien format : sans titre
     const prompts: string[] = [];
     const llm = (p: string) => { prompts.push(p); return JSON.stringify({ s1: { fonction: ['lien-suivi-partenaire'] } }); };
     const tight = { ...cfg, maxHdLookupsPerPass: 0 };

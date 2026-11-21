@@ -1,4 +1,4 @@
-// Vue par conversation (teams-watcher.ts, lot 9) : tous les chats actifs, « à toi de répondre », « à voir », pointage « Vu ».
+// Vue par conversation (teams-watcher.ts) : tous les chats actifs, « à toi de répondre », « à voir », pointage « Vu ».
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -192,7 +192,7 @@ describe('passe et fichiers', () => {
   });
 });
 
-// ─────────────── lot 10 : fil relu, messages en entier, réponse depuis la page ───────────────
+// ─────────────── fil relu, messages en entier, réponse depuis la page ───────────────
 
 const gm = (id: string, at: number, uid: string, content: string, o: Record<string, unknown> = {}): GraphMessage => ({
   id, createdDateTime: iso(at), messageType: 'message', from: { user: { id: uid, displayName: uid === ME ? 'Alex Durand' : 'Camille MARTIN' } }, body: { contentType: 'html', content }, ...o,
@@ -204,7 +204,7 @@ const withThread = (recent: ConvMsg[], o: Partial<ConvChat> = {}): ConvChat => {
 };
 const row1 = (c: ConvChat, seen?: number, waits: Wait[] = []) => conversationRows(state({ c1: c }), seen === undefined ? undefined : { v: 1, chats: { c1: seen } }, waits, undefined, NOW)[0]!;
 
-describe('un message du fil (lot 10)', () => {
+describe('un message du fil', () => {
   beforeEach(() => setOwner('Alex Durand'));
   test('texte en entier, retours à la ligne et puces gardés', () => {
     expect(htmlLines('<p>Bonjour,</p><p>Deux points :</p><ul><li>un</li><li>deux &amp; trois</li></ul><p>Merci</p>')).toBe('Bonjour,\nDeux points :\n• un\n• deux & trois\nMerci');
@@ -229,7 +229,7 @@ describe('un message du fil (lot 10)', () => {
   });
 });
 
-describe('à toi de répondre, sur tout le fil (lot 10)', () => {
+describe('à toi de répondre, sur tout le fil', () => {
   test('groupe : une question sans mention qui suit son message est pour lui ; une question entre collègues, non', () => {
     const mine = msg('1', T0 - 3 * MIN, { who: 'me', from: 'Alex Durand' });
     expect(row1(withThread([mine, msg('2', T0, { question: true })]))).toMatchObject({ ball: 'reply', why: 'question' });
@@ -267,7 +267,7 @@ describe('à toi de répondre, sur tout le fil (lot 10)', () => {
   });
 });
 
-describe('passe, fil et réponse (lot 10)', () => {
+describe('passe, fil et réponse', () => {
   let dir = '';
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'tc-')); setOwner('Alex Durand'); });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));

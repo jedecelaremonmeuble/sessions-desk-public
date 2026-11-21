@@ -1,4 +1,4 @@
-// Fils confiés (teams-watcher.ts, lot 11) : lien chat → session, remise des messages à traiter puis de toute la suite.
+// Fils confiés (teams-watcher.ts) : lien chat → session, remise des messages à traiter puis de toute la suite.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

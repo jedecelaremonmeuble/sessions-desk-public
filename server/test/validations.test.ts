@@ -1,4 +1,4 @@
-// Validations métier (lot 5) : la session qualifie une réponse, le veilleur garde la preuve et refuse ce qu'aucun
+// Validations métier : la session qualifie une réponse, le veilleur garde la preuve et refuse ce qu'aucun
 // message connu ne porte. Dossiers temporaires, aucun appel réseau.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -130,7 +130,7 @@ describe('commande (fichiers)', () => {
   });
 });
 
-describe('validations attendues (lot 2)', () => {
+describe('validations attendues', () => {
   const H = 3_600_000;
   const w0 = (over: Partial<Wait> = {}): Wait => ({ ...waitFromHook({ session_id: SID, cwd: null, tool_name: TOOL, tool_input: { chatId: '19:abc', body: '<p>Q1, Q2 ?</p>' }, tool_response: `id: ${NOW}` }, NOW + 1000)!, ...over });
   const expectEv = (q: string, at = NOW - 60_000, extra: Partial<ValEvent> = {}): ValEvent => ({ ...(buildValEvent('expect', { q, question: 'question ' + q, to: 'Camille Martin' }, SID, [], at, 'x' + q) as { event: ValEvent }).event, ...extra });
@@ -181,7 +181,7 @@ describe('validations attendues (lot 2)', () => {
   });
 });
 
-describe('recopie sur le ticket (lot 7)', () => {
+describe('recopie sur le ticket', () => {
   const PAT = 'TCK-(\\d{6})';
   const ans = (evt: string, extra: Partial<ValEvent> = {}): ValEvent => ({ v: 1, evt, kind: 'answer', at: NOW, sessionId: SID, q: 'Q1', question: 'On sort <le> client ?', decision: 'valide-reserve', reserve: 'pas avant lundi', validator: 'Camille Martin', channel: 'teams', evidence: { chatId: '19:abc', messageId: R1.id, at: NOW - 60_000 }, quote: 'oui & d’accord', scope: { hd: null }, recordedBy: 'session', ...extra });
 

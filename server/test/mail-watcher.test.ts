@@ -1,4 +1,4 @@
-// Surveillance des réponses aux EMAILS (lot 4) : règles pures et fichiers d'attente sur un dossier temporaire. Aucun appel réseau.
+// Surveillance des réponses aux EMAILS : règles pures et fichiers d'attente sur un dossier temporaire. Aucun appel réseau.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

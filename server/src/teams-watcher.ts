@@ -1,4 +1,4 @@
-// SURVEILLANCE DES RÉPONSES TEAMS (le cadrage, lot 1).
+// SURVEILLANCE DES RÉPONSES TEAMS.
 // Une session qui envoie un message dans un chat Teams (connecteur claude.ai Microsoft 365, outil teams_send_chat_message)
 // attend souvent une réponse. Ce fichier enregistre l'attente, lit les réponses avec le jeton DÉLÉGUÉ de l'utilisateur
 // (Chat.Read, jamais le compte de service) et les injecte dans la session par /api/send du serveur 8765.
@@ -9,40 +9,40 @@
 //   node teams-watcher.ts install-hook  ajoute le hook PostToolUse à ~/.claude/settings.json (idempotent, copie .bak)
 //   node teams-watcher.ts [--dry-run]   une passe (tâche planifiée toutes les 2 min) ; --dry-run n'injecte rien
 //   node teams-watcher.ts --dry-run --since=24   aperçu des demandes entrantes des 24 dernières heures (rien d'ouvert ni d'écrit)
-//   node teams-watcher.ts act <dismiss|remind|snooze> <sessionId> <messageId>   boutons de la page (lot 2)
-//   node teams-watcher.ts conversations   la vue par conversation, en texte (lot 9 ; ne lit que les fichiers d'état)
-//   node teams-watcher.ts follow <chatId> [sessionId]   la session s'abonne à un fil (lot 11 ; sessionId = CLAUDE_CODE_SESSION_ID par défaut)
+//   node teams-watcher.ts act <dismiss|remind|snooze> <sessionId> <messageId>   boutons de la page
+//   node teams-watcher.ts conversations   la vue par conversation, en texte (ne lit que les fichiers d'état)
+//   node teams-watcher.ts follow <chatId> [sessionId]   la session s'abonne à un fil (sessionId = CLAUDE_CODE_SESSION_ID par défaut)
 //   node teams-watcher.ts unfollow <chatId>              détache le fil
-//   node teams-watcher.ts send <chatId>   envoie dans ce chat le texte lu sur stdin (lot 10 ; bouton « Répondre » de la page)
-// Lot 2 : sans réponse, la session est réveillée pour RELANCER elle-même (4 h ouvrées, puis J+1 10 h, puis alerte à
+//   node teams-watcher.ts send <chatId>   envoie dans ce chat le texte lu sur stdin (bouton « Répondre » de la page)
+// RELANCES : sans réponse, la session est réveillée pour RELANCER elle-même (4 h ouvrées, puis J+1 10 h, puis alerte à
 // l'utilisateur), rouverte si elle est fermée. Relances autonomes éteintes tant que modules.teams de config.json ne dit pas
 // { "reminders": true } ; « Relancer maintenant » (clic de l'utilisateur) marche sans.
-// Lot 3 (DEMANDES ENTRANTES) : un collègue interne écrit à l'utilisateur dans un chat 1:1 sans qu'aucune session n'attende sa
+// DEMANDES ENTRANTES : un collègue interne écrit à l'utilisateur dans un chat 1:1 sans qu'aucune session n'attende sa
 // réponse ⇒ la passe ouvre une session (/api/new) qui diagnostique et PROPOSE une réponse ; rien ne part vers le
 // collègue sans le go de l'utilisateur. Éteint tant que modules.teams de config.json ne dit pas { "inbound": { "enabled": true } }.
-// Lot 4 (EMAILS) : même attente pour un email Outlook (outils outlook_create_*draft, outlook_send_mail). La session prépare
+// EMAILS : même attente pour un email Outlook (outils outlook_create_*draft, outlook_send_mail). La session prépare
 // le plus souvent un BROUILLON : l'attente ne démarre qu'à l'envoi par l'utilisateur, constaté dans la conversation. La
 // réponse est injectée comme pour Teams ; une relance est un BROUILLON préparé par la session, jamais un envoi. Éteint tant que
 // modules.teams de config.json ne dit pas { "mail": true } ; allumé, « login » demande aussi Mail.Read (à refaire une fois).
-// Lot 8 (FILS LUS) : lire un fil par Graph ne le marque pas « lu » — Teams garde son compteur de non-lus alors qu'une session
+// FILS LUS : lire un fil par Graph ne le marque pas « lu » — Teams garde son compteur de non-lus alors qu'une session
 // a lu et traité les messages. La passe marque donc le fil lu (markChatReadForUser) quand une session vient d'y ÉCRIRE,
 // quand une réponse lui est REMISE, et quand une demande entrante lui est confiée. Jamais pour un message écarté ou pas
 // encore remis. Éteint tant que modules.teams de config.json ne dit pas { "markRead": true } ; allumé, « login » demande
 // aussi Chat.ReadWrite (à refaire une fois) — sans lui, la surveillance continue et la passe le dit.
 //
-// Lot 9 (CONVERSATIONS) : la page ne montrait les fils que session par session. La passe liste désormais TOUS les chats
+// CONVERSATIONS : la page ne montrait les fils que session par session. La passe liste désormais TOUS les chats
 // actifs de l'utilisateur (1:1, groupes, réunions — qu'une session y soit abonnée ou non) avec leur dernier message, et la
 // page en fait une vue par conversation : « à toi de répondre », « à voir » (il s'y est passé quelque chose depuis le
 // dernier pointage « Vu » de l'utilisateur : message d'un collègue OU message envoyé par une session en son nom), « à jour ».
-// L'état lu de Teams ne sert pas (le lot 8 marque lu ce qu'une session a traité). Chat.Read suffit. Éteint tant que
+// L'état lu de Teams ne sert pas (« fils lus » marque lu ce qu'une session a traité). Chat.Read suffit. Éteint tant que
 // modules.teams de config.json ne dit pas { "conversations": { "enabled": true } }.
-// Lot 10 (FIL ET RÉPONSE) : le dernier message seul ne suffit pas — une mention suivie d'un autre message, ou une question
+// FIL ET RÉPONSE : le dernier message seul ne suffit pas — une mention suivie d'un autre message, ou une question
 // sans mention dans un groupe, passaient à côté. La passe lit donc les derniers messages des chats qui ont bougé (un appel
 // par chat, seulement quand son dernier message change) : « à toi de répondre » se décide sur tout ce qui est arrivé depuis
 // le dernier message de l'utilisateur (mention, citation d'un de ses messages, son prénom, question qui suit son message), et
 // la page montre les messages EN ENTIER. Répondre depuis la page : { "conversations": { "reply": true } } — la réponse part
 // par Graph au nom de l'utilisateur, sur son clic seulement ; « login » demande alors ChatMessage.Send (à refaire une fois).
-// Lot 11 (FIL CONFIÉ) : rattacher une conversation à une session. Le bouton « Confier » de la page (ou la session elle-même :
+// FIL CONFIÉ : rattacher une conversation à une session. Le bouton « Confier » de la page (ou la session elle-même :
 // « follow ») pose un lien chat → session ; la passe remet à la session les messages à traiter, puis TOUS les suivants du
 // fil, jusqu'au détachement. Les messages sont des DONNÉES : la session propose, rien ne part sans le go de l'utilisateur.
 // Une nouvelle session s'ouvre dans inbound.cwd. Tant qu'un fil est confié, les demandes entrantes n'ouvrent rien pour lui.
@@ -81,7 +81,7 @@ export interface Wait {
   v: 1; sessionId: string; chatId: string; messageId: string; sentAt: number; excerpt: string; cwd: string | null;
   status: WaitStatus; chatLabel?: string | null; replies?: Reply[]; repliedAt?: number; injectedAt?: number;
   closedAt?: number; lastCheckAt?: number; lastError?: string | null;
-  // Lot 2 (relances, réouverture, boutons de la page)
+  // Relances (, réouverture, boutons de la page)
   /** Premier message de la chaîne : une relance envoyée par la session remplace l'attente sans remettre le compteur à zéro. */
   firstSentAt?: number; reminders?: number; lastRemindAt?: number; alertedAt?: number | undefined;
   /** l'utilisateur a cliqué « Relancer maintenant » (hors calendrier, même relances éteintes) / « Repousser ». */
@@ -89,7 +89,7 @@ export interface Wait {
   /** Dernière action de la page : la passe en cours n'écrase pas un fichier modifié par un clic pendant qu'elle tournait. */
   userActionAt?: number;
   reopenedAt?: number | undefined; reopens?: number;
-  /** Lot 4 (EMAIL) : attente d'une réponse à un email Outlook. chatId = conversationId une fois connu ('' avant). */
+  /** EMAIL : attente d'une réponse à un email Outlook. chatId = conversationId une fois connu ('' avant). */
   channel?: 'mail'; mail?: MailRef;
 }
 /** Email attendu. Une session ne fait le plus souvent qu'un BROUILLON : l'attente ne compte qu'à partir de l'envoi par l'utilisateur. */
@@ -117,11 +117,11 @@ export interface SummaryWait {
   channel?: 'mail'; pendingSend?: boolean;
 }
 export interface SummaryInbound { chatId: string; chatLabel: string | null; from: string; at: number; openedAt: number }
-export interface Summary { at: number; enabled: boolean; reminders: boolean; sessions: Record<string, SummaryWait[]>; inbound?: Record<string, SummaryInbound>; validations?: Record<string, ValSummary>; /** Lot 9 : compteurs de la vue par conversation (absents = vue éteinte). */ conversations?: { reply: number; unseen: number; total: number; at: number; /** Réponse depuis la page allumée (lot 10). */ send: boolean } }
+export interface Summary { at: number; enabled: boolean; reminders: boolean; sessions: Record<string, SummaryWait[]>; inbound?: Record<string, SummaryInbound>; validations?: Record<string, ValSummary>; /** compteurs de la vue par conversation (absents = vue éteinte). */ conversations?: { reply: number; unseen: number; total: number; at: number; /** Réponse depuis la page allumée. */ send: boolean } }
 
 export const TOOL = 'mcp__claude_ai_Microsoft_365__teams_send_chat_message';
 const M365 = 'mcp__claude_ai_Microsoft_365__';
-/** Outils Outlook qui ouvrent une attente d'email (lot 4). outlook_send_draft ne fait que confirmer un brouillon déjà suivi. */
+/** Outils Outlook qui ouvrent une attente d'email. outlook_send_draft ne fait que confirmer un brouillon déjà suivi. */
 export const MAIL_TOOLS = ['outlook_create_draft', 'outlook_create_reply_draft', 'outlook_create_reply_all_draft', 'outlook_send_mail', 'outlook_send_draft'].map((t) => M365 + t);
 /** Matcher du hook PostToolUse : Teams + Outlook. */
 export const HOOK_MATCHER = `${M365}(teams_send_chat_message|outlook_create_draft|outlook_create_reply_draft|outlook_create_reply_all_draft|outlook_send_mail|outlook_send_draft)`;
@@ -214,7 +214,7 @@ export function htmlText(html: string): string {
     .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ').trim();
 }
-/** Comme htmlText, en gardant les retours à la ligne et les puces : pour afficher un message EN ENTIER (lot 10). */
+/** Comme htmlText, en gardant les retours à la ligne et les puces : pour afficher un message EN ENTIER. */
 export function htmlLines(html: string): string {
   return html
     .replace(/<attachment[^>]*>.*?<\/attachment>/gis, ' ')
@@ -308,7 +308,7 @@ export function reminderText(w: Wait, n: number, max: number, byOwner: boolean, 
     + ` Si tu n'en as plus besoin, n'envoie rien et ferme l'attente : ${dismissCmd}`;
 }
 
-// ─────────────── emails (lot 4) : pur ───────────────
+// ─────────────── emails : pur ───────────────
 
 /** Id d'un message Outlook lu dans la réponse de l'outil (« Reply-all draft created in Drafts (not sent).\nid: AAk…\nwebLink: … »). */
 export function mailIdFromResponse(toolResponse: unknown): string | null {
@@ -441,7 +441,7 @@ export function chatLabel(chat: { topic?: string | null; members?: { userId?: st
   return names.length ? clip(names.join(', '), 60) : null;
 }
 
-// ─────────────── demandes entrantes (lot 3) : pur ───────────────
+// ─────────────── demandes entrantes : pur ───────────────
 
 export interface InboundConfig {
   enabled: boolean;
@@ -464,7 +464,7 @@ export interface InboundChat {
   handledAt: number;
   label?: string | null; email?: string | null; internal?: boolean;
   sessionId?: string; openedAt?: number; from?: string; lastError?: string | null;
-  /** Dernier message remis à la session ouverte (lot 9 : « une session s'en occupe » ne vaut que jusque-là). */
+  /** Dernier message remis à la session ouverte (« une session s'en occupe » ne vaut que jusque-là). */
   sessionUpTo?: number;
 }
 export interface InboundState { v: 1; since: number; chats: Record<string, InboundChat>; opened: number[] }
@@ -561,7 +561,7 @@ export function inboundSummary(st: InboundState | undefined, now: number): Recor
   return out;
 }
 
-// ─────────────── conversations (lot 9) : pur ───────────────
+// ─────────────── conversations : pur ───────────────
 
 export interface ConversationsConfig {
   enabled: boolean;
@@ -571,15 +571,15 @@ export interface ConversationsConfig {
   max: number;
   /** Noms affichés d'expéditeurs à traiter comme des applications (compte de service qui notifie, robot) : listés, jamais « à voir ». */
   mute: string[];
-  /** Lot 10 : fils relus par passe (les chats dont le dernier message a changé, les plus récents d'abord). 0 = dernier message seul. */
+  /** fils relus par passe (les chats dont le dernier message a changé, les plus récents d'abord). 0 = dernier message seul. */
   threads: number;
-  /** Lot 10 : répondre depuis la page. Éteint par défaut ; allumé, il demande ChatMessage.Send au « login ». */
+  /** répondre depuis la page. Éteint par défaut ; allumé, il demande ChatMessage.Send au « login ». */
   reply: boolean;
 }
 export const defaultConversations: ConversationsConfig = { enabled: false, days: 14, max: 120, mute: [], threads: 15, reply: false };
 /** Longueur gardée d'un message (affiché en entier ; au-delà, coupé avec « … »). */
 const MSG_MAX = 4000;
-/** Un message d'un fil, tel que la passe l'a lu (lot 10). */
+/** Un message d'un fil, tel que la passe l'a lu. */
 export interface ConvMsg {
   id: string; at: number; from: string | null; who: 'me' | 'other' | 'app'; text: string;
   /** Rien à répondre (needsNoReply). */
@@ -600,7 +600,7 @@ export interface ConvChat {
   ack: boolean;
   /** L'utilisateur est mentionné (@) dans ce message : dans un groupe, c'est ce qui en fait une demande pour lui. */
   mention: boolean;
-  /** Lot 10 : derniers messages du fil (ordre chronologique), valables tant que recentFor === lastId. */
+  /** derniers messages du fil (ordre chronologique), valables tant que recentFor === lastId. */
   recent?: ConvMsg[]; recentFor?: string;
 }
 export interface ConvState { v: 1; since: number; at: number; chats: Record<string, ConvChat>; /** Réponse depuis la page allumée (pour le résumé, qui ne lit pas la configuration). */ reply?: boolean }
@@ -609,7 +609,7 @@ export interface ConvShown { id: string; at: number; from: string | null; by: 'm
 export interface ConvSeen { v: 1; chats: Record<string, number> }
 /** Session liée à un chat : attente ouverte, réponse reçue en cours de remise, demande entrante, ou attente close récente. */
 export interface ConvSession { sessionId: string; role: 'linked' | 'wait' | 'replied' | 'inbound' | 'past'; at: number }
-/** Fil confié à une session (lot 11). */
+/** Fil confié à une session. */
 export interface ConvLink {
   sessionId: string; at: number;
   /** Heure du dernier message remis à la session (0 : rien encore). */
@@ -638,12 +638,12 @@ export interface ConvRow {
   unseen: boolean;
   /** 'reply' : à l'utilisateur de répondre · 'session' : une session a reçu ce message · 'waiting' : une session attend leur réponse. */
   ball: 'reply' | 'session' | 'waiting' | null;
-  /** Dans un groupe, ce qui fait de ce fil une demande pour l'utilisateur (lot 10). */
+  /** Dans un groupe, ce qui fait de ce fil une demande pour l'utilisateur. */
   why: 'mention' | 'quote' | 'named' | 'question' | null;
   /** Messages à lire, en entier : ceux auxquels répondre, sinon ceux arrivés depuis le pointage (vide : le dernier message suffit). */
   news: ConvShown[];
   sessions: ConvSession[];
-  /** Fil confié à cette session : elle reçoit la suite jusqu'au détachement (lot 11). */
+  /** Fil confié à cette session : elle reçoit la suite jusqu'au détachement. */
   link?: { sessionId: string; at: number; lastError: string | null; pending: boolean };
 }
 
@@ -755,7 +755,7 @@ export function conversationRows(st: ConvState | undefined, seen: ConvSeen | und
     let ball: ConvRow['ball'] = null, why: ConvRow['why'] = null;
     // Un pointage EXPLICITE (« Rien à répondre ») éteint « à toi de répondre » ; le départ de la première passe, non.
     const pointed = seen?.chats[chatId] ?? 0;
-    // Le fil lu par la passe ne vaut que pour le dernier message qu'elle connaît (lot 10) ; sinon, le dernier message seul.
+    // Le fil lu par la passe ne vaut que pour le dernier message qu'elle connaît ; sinon, le dernier message seul.
     const thread = c.recent && c.recentFor === c.lastId ? c.recent : null;
     const byOf = (m: ConvMsg): ConvShown['by'] => (m.who === 'me' ? (sessionSent.has(m.id) ? 'session' : 'me') : m.who);
     const lastMineAt = thread?.filter((m) => m.who === 'me').at(-1)?.at ?? 0;
@@ -827,13 +827,13 @@ export function writeSummary(dir: string, now: number, reminders?: boolean) {
     ...(conv ? { conversations: conversationCounts(conversationRows(conv, readJson<ConvSeen>(join(dir, '_conv-seen.json')), waits, inbound, now, undefined, readJson<LinkState>(join(dir, '_links.json'))), conv.at, !!conv.reply) } : {}) };
   writeAtomic(join(dir, '_summary.json'), JSON.stringify(sum));
 }
-/** Vue par conversation pour la page (lot 9) : null tant que la passe n'a rien listé (vue éteinte). */
+/** Vue par conversation pour la page : null tant que la passe n'a rien listé (vue éteinte). */
 export function conversationsView(dir: string, now: number): { at: number; since: number; rows: ConvRow[] } | null {
   const conv = readJson<ConvState>(join(dir, '_conversations.json'));
   if (!conv || conv.v !== 1) return null;
   return { at: conv.at, since: conv.since, rows: conversationRows(conv, readJson<ConvSeen>(join(dir, '_conv-seen.json')), loadWaits(dir), readJson<InboundState>(join(dir, '_inbound.json')), now, undefined, readJson<LinkState>(join(dir, '_links.json'))) };
 }
-/** Fil d'une conversation pour la page (lot 10) : les derniers messages lus par la passe, en entier. */
+/** Fil d'une conversation pour la page : les derniers messages lus par la passe, en entier. */
 export function conversationThread(dir: string, chatId: string): { fresh: boolean; messages: ConvShown[] } | null {
   const c = readJson<ConvState>(join(dir, '_conversations.json'))?.chats[chatId];
   if (!c) return null;
@@ -844,7 +844,7 @@ const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 /** Corps Teams d'une réponse tapée dans la page : texte brut, retours à la ligne gardés — jamais de HTML de l'utilisateur. */
 export const replyHtml = (text: string): string => escapeHtml(text.trim()).replace(/\r?\n/g, '<br>');
 export type GraphSend = (path: string, body: unknown) => Promise<{ id?: string; createdDateTime?: string }>;
-/** Bouton « Répondre » de la page (lot 10) : poste le texte dans le chat AU NOM de l'utilisateur, puis tient la vue à
+/** Bouton « Répondre » de la page : poste le texte dans le chat AU NOM de l'utilisateur, puis tient la vue à
  *  jour sans attendre la passe (dernier mot = le sien, conversation pointée). Retourne l'erreur, ou null. */
 export async function sendChatReply(dir: string, cfg: Pick<WatcherConfig, 'conversations'>, chatId: string, text: string, now: number, post: GraphSend): Promise<string | null> {
   if (!cfg.conversations.enabled || !cfg.conversations.reply) return 'réponse depuis la page éteinte ({ "conversations": { "reply": true } } dans modules.teams (config.json))';
@@ -869,7 +869,7 @@ export async function sendChatReply(dir: string, cfg: Pick<WatcherConfig, 'conve
   markConversationSeen(dir, chatId, 'seen', at, Math.max(now, at));
   return null;
 }
-// ─────────────── fils confiés (lot 11) ───────────────
+// ─────────────── fils confiés ───────────────
 
 const linksFile = (dir: string) => join(dir, '_links.json');
 /** Confie un fil à une session (bouton « Confier » de la page, ou la session elle-même). `fresh` : session à ouvrir à la
@@ -1064,7 +1064,7 @@ export function markConversationSeen(dir: string, chatId: string, action: string
   return null;
 }
 
-// ─────────────── validations métier (lot 5) ───────────────
+// ─────────────── validations métier ───────────────
 // Une réponse reçue (Teams, email, demande entrante) ou rapportée par l'utilisateur peut trancher une question métier.
 // C'est la SESSION qui la qualifie (elle seule sait ce qu'elle a demandé), par `validation record` : un événement est
 // ajouté au journal de la session (jamais modifié), avec la citation exacte et l'id du message. Le veilleur garde la
@@ -1077,7 +1077,7 @@ export const DECISION_LABEL: Record<ValDecision, string> = { valide: 'validé', 
 export interface Evidence { v: 1; channel: 'teams' | 'mail' | 'inbound'; chatId: string; messageId: string; from: string; at: number; text: string }
 export interface ValEvent {
   v: 1; evt: string; kind: 'expect' | 'answer' | 'withdraw'; at: number; sessionId: string; q: string;
-  /** expect (lot 2) : à qui la question est posée, et le chat ou la conversation si la session le précise. */
+  /** expect : à qui la question est posée, et le chat ou la conversation si la session le précise. */
   to?: string; chat?: string | null;
   question?: string; decision?: ValDecision; reserve?: string | null; validator?: string; channel?: ValChannel;
   evidence?: { chatId: string; messageId: string; at: number } | null; quote?: string;
@@ -1088,8 +1088,8 @@ export interface ValEvent {
 export type ValState = 'attendue' | 'non-qualifiee' | 'sans-reponse' | 'tranchee' | 'a-preciser' | 'retiree';
 export interface ValItem {
   q: string; question: string; decision: ValDecision | null; reserve: string | null; validator: string | null; channel: ValChannel | null; at: number; quote: string; withdrawn: boolean; changes: number;
-  /** lot 2 */ state: ValState; to: string | null; expectedAt: number | null; chatId: string | null;
-  /** lot 3 : dernière décision et sa recopie sur le ticket ('ok', 'skip:<raison>', 'echec', 'attente'). */ evt: string | null; exported?: string;
+  state: ValState; to: string | null; expectedAt: number | null; chatId: string | null;
+  /** dernière décision et sa recopie sur le ticket ('ok', 'skip:<raison>', 'echec', 'attente'). */ evt: string | null; exported?: string;
 }
 export interface ValSummary { total: number; settled: number; refused: number; pending: number; expected: number; unqualified: number; unanswered: number; items: ValItem[] }
 /** Une réponse transmise sans validation enregistrée depuis ce délai : la session a oublié de qualifier. */
@@ -1355,7 +1355,7 @@ export function applyAction(dir: string, sessionId: string, messageId: string, a
   return null;
 }
 
-// ─────────────── recopie des validations sur un ticket (lot 7) ───────────────
+// ─────────────── recopie des validations sur un ticket ───────────────
 // Le journal de la session reste la source. Une décision qui NOMME son ticket (`--hd` sur la validation) y est recopiée
 // en note interne — jamais sur le ticket déduit de la session : une session traite souvent plusieurs sujets, et son tag
 // dit son sujet du moment, pas celui de chaque question (une note mal placée ne se retire pas en silence). Elle est recopiée par une commande du poste (module éteint par défaut : `export` dans
@@ -1448,19 +1448,19 @@ export interface WatcherConfig {
   tenant: string; clientId: string; scope: string; serverUrl: string;
   /** Relances AUTONOMES vers les collègues (D6) : éteintes par défaut, allumées sur go (modules.teams de config.json). « Relancer maintenant » marche sans. */
   reminders: boolean; calendar: Calendar;
-  /** Demandes ENTRANTES (lot 3) : éteintes par défaut. */
+  /** Demandes ENTRANTES : éteintes par défaut. */
   inbound: InboundConfig;
   /** Nom du propriétaire du poste dans les invites envoyées aux sessions. */
   ownerName?: string;
-  /** Lot 4 : réponses aux EMAILS Outlook. Éteint par défaut ; allumé, il demande Mail.Read au « login ». */
+  /** réponses aux EMAILS Outlook. Éteint par défaut ; allumé, il demande Mail.Read au « login ». */
   mail: boolean; mailScope: string;
-  /** Lot 7 : recopie des validations métier sur le ticket de la session. Éteint (null) par défaut. */
+  /** recopie des validations métier sur le ticket de la session. Éteint (null) par défaut. */
   export: ExportConfig | null;
-  /** Lot 8 : marquer « lu » dans Teams un fil qu'une session a lu ou auquel elle a répondu. Éteint par défaut ; allumé, il demande Chat.ReadWrite au « login ». */
+  /** marquer « lu » dans Teams un fil qu'une session a lu ou auquel elle a répondu. Éteint par défaut ; allumé, il demande Chat.ReadWrite au « login ». */
   markRead: boolean; readScope: string;
-  /** Lot 9 : vue par conversation (tous les chats actifs). Éteinte par défaut ; Chat.Read suffit. */
+  /** vue par conversation (tous les chats actifs). Éteinte par défaut ; Chat.Read suffit. */
   conversations: ConversationsConfig;
-  /** Lot 10 : portée de la réponse depuis la page (demandée au « login » quand conversations.reply est allumé). */
+  /** portée de la réponse depuis la page (demandée au « login » quand conversations.reply est allumé). */
   sendScope: string;
 }
 export const defaultConfig: WatcherConfig = {
@@ -1526,7 +1526,7 @@ async function graph<T>(token: string, path: string, headers: Record<string, str
   if (!r.ok) throw Object.assign(new Error(`Graph ${r.status} sur ${path.split('?')[0]!.replace(/19:[^/]+/, '<chat>').replace(/messages\/[^/]+/, 'messages/<id>')}`), { status: r.status });
   return (await r.json()) as T;
 }
-/** POST Graph qui rend l'objet créé (lot 10 : le message envoyé, pour son id et son heure). */
+/** POST Graph qui rend l'objet créé (le message envoyé, pour son id et son heure). */
 async function graphPostJson<T>(token: string, path: string, body: unknown): Promise<T> {
   const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
   if (!r.ok) throw Object.assign(new Error(`Graph ${r.status} sur ${path.replace(/19(:|%3A)[^/]+/i, '<chat>')}`), { status: r.status });
@@ -1544,7 +1544,7 @@ export function tokenTenant(jwt: string): string | null {
   } catch { return null; }
 }
 
-// ─────────────── fils lus (lot 8) ───────────────
+// ─────────────── fils lus ───────────────
 
 /** Fils à marquer lus : chatId → instant de la demande. */
 export interface ReadQueue { v: 1; chats: Record<string, number> }
@@ -1607,7 +1607,7 @@ export interface InboundDeps {
   open: (sessionId: string, prompt: string) => Promise<string | null>;
   newId: () => string;
 }
-export interface InboundResult { seen: number; opened: number; followed: number; skipped: number; deferred: number; preview: string[]; errors: string[]; /** Fils confiés à une session par cette passe (lot 8). */ read: string[] }
+export interface InboundResult { seen: number; opened: number; followed: number; skipped: number; deferred: number; preview: string[]; errors: string[]; /** Fils confiés à une session par cette passe. */ read: string[] }
 
 /** Passe des demandes entrantes. liveChats = chats où une session attend déjà la réponse (l'injection s'en charge). */
 export async function runInbound(dir: string, cfg: WatcherConfig, meId: string, liveChats: ReadonlySet<string>, deps: InboundDeps, opts: { dryRun: boolean; now: number; previewSince?: number; selfCmd?: string | undefined }): Promise<InboundResult> {
@@ -1670,9 +1670,9 @@ export async function runInbound(dir: string, cfg: WatcherConfig, meId: string, 
 
 /** Chat listé par Graph, avec l'aperçu de son dernier message. */
 interface GraphChatFull { id: string; chatType?: string; topic?: string | null; webUrl?: string | null; viewpoint?: { isHidden?: boolean } | null; lastMessagePreview?: GraphPreview | null }
-export interface ConvResult { listed: number; errors: string[]; /** Fils relus par cette passe (lot 10). */ threads?: number }
+export interface ConvResult { listed: number; errors: string[]; /** Fils relus par cette passe. */ threads?: number }
 const GRAPH_ROOT = 'https://graph.microsoft.com/v1.0';
-/** Passe de la vue par conversation (lot 9) : tous les chats actifs de la fenêtre, leur dernier message, leur nom.
+/** Passe de la vue par conversation : tous les chats actifs de la fenêtre, leur dernier message, leur nom.
  *  Un appel par page de 50 chats ; les membres ne sont lus qu'une fois par chat sans sujet ni nom connu (20 au plus par passe). */
 export async function runConversations(dir: string, cfg: Pick<WatcherConfig, 'conversations'>, meId: string, graphGet: <T>(path: string) => Promise<T>, opts: { dryRun: boolean; now: number; /** Fils confiés : toujours relus, hors plafond. */ always?: ReadonlySet<string> }): Promise<ConvResult> {
   const { now } = opts, cc = cfg.conversations;
@@ -1703,7 +1703,7 @@ export async function runConversations(dir: string, cfg: Pick<WatcherConfig, 'co
           labels++;
           try { label = chatLabel(await graphGet(`/chats/${encodeURIComponent(c.id)}?$expand=members`), meId); } catch { /* au prochain passage */ }
         }
-        // Fil (lot 10) : relu seulement quand le dernier message a changé, les chats les plus récents d'abord ; passé le
+        // Fil : relu seulement quand le dernier message a changé, les chats les plus récents d'abord ; passé le
         // plafond de la passe, l'ancien fil est gardé (périmé : recentFor ≠ lastId) et relu à la suivante.
         let recent = old?.recent, recentFor = old?.recentFor;
         if (recentFor !== last.lastId && (threads < (cc.threads ?? 0) || opts.always?.has(c.id))) {
@@ -1732,7 +1732,7 @@ type Deliver = (w: Wait, text: string) => Promise<{ w: Wait; ok: boolean }>;
 interface GraphMailFull extends GraphMail {
   conversationId?: string; createdDateTime?: string | null; toRecipients?: { emailAddress?: { name?: string | null; address?: string | null } | null }[] | null;
 }
-/** Passe des attentes d'EMAIL (lot 4) : conversation résolue, envoi du brouillon constaté, réponses lues, relance = brouillon. */
+/** Passe des attentes d'EMAIL : conversation résolue, envoi du brouillon constaté, réponses lues, relance = brouillon. */
 async function runMail(dir: string, cfg: WatcherConfig, todo: Wait[], all: Wait[], deliver: Deliver, res: PassResult, opts: { dryRun: boolean; now: number; selfCmd?: string | undefined }): Promise<void> {
   const { now } = opts, cal = cfg.calendar;
   let token: string;
@@ -1857,7 +1857,7 @@ async function runMail(dir: string, cfg: WatcherConfig, todo: Wait[], all: Wait[
   }
 }
 
-export interface PassResult { live: number; checked: number; replied: number; injected: number; reminded: number; alerted: number; reopened: number; takenOver: number; expired: number; errors: string[]; inbound?: Omit<InboundResult, 'errors' | 'read'>; /** Fils marqués lus dans Teams (lot 8). */ read?: number; /** Chats listés pour la vue par conversation (lot 9). */ conversations?: number; /** Fils confiés : remises faites / reportées (lot 11). */ links?: { delivered: number; deferred: number } }
+export interface PassResult { live: number; checked: number; replied: number; injected: number; reminded: number; alerted: number; reopened: number; takenOver: number; expired: number; errors: string[]; inbound?: Omit<InboundResult, 'errors' | 'read'>; /** Fils marqués lus dans Teams. */ read?: number; /** Chats listés pour la vue par conversation. */ conversations?: number; /** Fils confiés : remises faites / reportées. */ links?: { delivered: number; deferred: number } }
 export interface PassOptions { dryRun: boolean; now?: number; selfCmd?: string; previewSince?: number }
 export async function runPass(dir: string, cfg: WatcherConfig, opts: PassOptions): Promise<PassResult> {
   const now = opts.now ?? Date.now(), cal = cfg.calendar;
@@ -1897,7 +1897,7 @@ export async function runPass(dir: string, cfg: WatcherConfig, opts: PassOptions
     return { w: { ...w, lastError: null, reopens: 0, reopenedAt: undefined }, ok: true };
   };
   const byChat = new Map<string, Wait[]>();
-  /** Fils qu'une session a lus ou auxquels elle vient d'écrire pendant cette passe (lot 8). */
+  /** Fils qu'une session a lus ou auxquels elle vient d'écrire pendant cette passe. */
   const toRead = new Set<string>();
   const mailTodo: Wait[] = [];
   for (const w of live) {
@@ -1950,7 +1950,7 @@ export async function runPass(dir: string, cfg: WatcherConfig, opts: PassOptions
       saveFromPass(dir, w0, w);
     }
   }
-  // Fils confiés (lot 11) : leur session reçoit la suite — les demandes entrantes n'ouvrent rien pour eux.
+  // Fils confiés : leur session reçoit la suite — les demandes entrantes n'ouvrent rien pour eux.
   const linked = new Set(cfg.conversations.enabled ? Object.keys(readJson<LinkState>(linksFile(dir))?.chats ?? {}) : []);
   if (cfg.inbound.enabled) {
     const { errors, read, ...inb } = await runInbound(dir, cfg, me.id, new Set([...live.map((w) => w.chatId), ...linked]), {
@@ -1994,7 +1994,7 @@ export function installHook(settingsPath: string, command: string): boolean {
   const post = (hooks.PostToolUse ??= []);
   const mine = post.find((e) => e.hooks?.some((h) => h.command?.includes('teams-watcher')));
   if (mine && mine.matcher === HOOK_MATCHER) return false;
-  if (mine) mine.matcher = HOOK_MATCHER;   // hook du lot 1 (Teams seul) : élargi aux outils Outlook
+  if (mine) mine.matcher = HOOK_MATCHER;   // premier hook (Teams seul) : élargi aux outils Outlook
   else post.push({ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command, timeout: 15 }] });
   if (existsSync(settingsPath)) copyFileSync(settingsPath, settingsPath + '.bak');
   writeAtomic(settingsPath, JSON.stringify(s, null, 2));

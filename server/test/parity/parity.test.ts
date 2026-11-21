@@ -1,4 +1,4 @@
-// PARITÉ PS ↔ Node (lot 2b, étape 3).
+// PARITÉ PS ↔ Node.
 //  1. « PS = Node » : les deux serveurs tournent EN MÊME TEMPS sur le même profil factice ; chaque route en lecture et
 //     une matrice de codes d'accès sont comparées, après normalisation des seuls champs qui dépendent de l'instant.
 //  2. Puis le MÊME jeu de tests contre chacun (SD_PARITY_SERVERS=ps,node) : ceux de legacy/sessions-dashboard-tests.ps1,
