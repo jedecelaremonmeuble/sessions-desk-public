@@ -178,6 +178,12 @@ try {
     git -C $repo archive --format=zip -o $zip $sha server/src server/package.json server/watchdog @extra
     if ($LASTEXITCODE -ne 0) { throw 'git archive en échec' }
     Expand-Archive $zip $stage -Force; Remove-Item $zip
+    # Page qui ne se compile pas = page vide derrière un serveur qui répond : refusée ici, avant la coupure.
+    $broken = @(Test-PageScripts (Join-Path $stage 'page'))
+    if ($broken) {
+        Remove-Item $stage -Recurse -Force
+        throw "déploiement RENONCÉ avant la coupure : la page de $($sha.Substring(0, 10)) ne se compile pas — $($broken -join ' ; '). Le serveur en service n'a pas été touché."
+    }
     dotnet build (Join-Path $repo 'driver\SessionsDesk.Driver.csproj') -c Release -o (Join-Path $stage '.build\driver') --nologo -v q
     if ($LASTEXITCODE -ne 0) { throw 'compilation du pilote en échec' }
     Set-Content (Join-Path $stage 'DEPLOYED.txt') @(

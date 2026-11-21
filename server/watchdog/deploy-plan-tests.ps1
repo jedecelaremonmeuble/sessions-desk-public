@@ -67,7 +67,29 @@ try {
         Check 'aucun .tmp ni page.new laissé' (-not (Get-ChildItem $fake -Recurse -Filter '*.tmp') -and -not (Test-Path (Join-Path $fake 'page.new')))
         Check 'DEPLOYED.txt pointe le nouveau commit' ((Get-DeployedCommit $fake) -eq $to)
         Check 'DEPLOYED.txt garde le commit de démarrage du serveur' ((Get-Content (Join-Path $fake 'DEPLOYED.txt') -Raw) -match "page remplacée à chaud .*serveur démarré sur $($from.Substring(0, 10))")
+
+        # ── Page qui ne se compile pas (2920d69 : retours à la ligne bruts dans une chaîne d'app.js) : refusée ──
+        if (& $have '2920d69') {
+            $bad = (git -C $repo rev-parse 2920d69).Trim()
+            $before = Get-Content (Join-Path $fake 'DEPLOYED.txt') -Raw
+            $msg = $null; try { Update-RunCopy -Repo $repo -Head $bad -RunDir $fake -Plan 'page' -Running $from } catch { $msg = $_.Exception.Message }
+            Check 'page cassée ⇒ déploiement renoncé' ("$msg" -match 'RENONCÉ.*app\.js : SyntaxError.*app\.js:\d+') "$msg"
+            Check 'page cassée ⇒ app.js en service intact' ((git -C $repo hash-object (Join-Path $fake 'page\app.js')).Trim() -eq $want)
+            Check 'page cassée ⇒ ni page.new ni .tmp laissés' (-not (Get-ChildItem $fake -Recurse -Filter '*.tmp') -and -not (Test-Path (Join-Path $fake 'page.new')))
+            Check 'page cassée ⇒ DEPLOYED.txt inchangé' ((Get-Content (Join-Path $fake 'DEPLOYED.txt') -Raw) -eq $before)
+        } else { Write-Host 'skip page cassée (clone incomplet)' }
     } else { Write-Host 'skip remplacement (clone incomplet)' }
+
+    # ── Test-PageScripts sur des fichiers faits main ──
+    $pd = Join-Path $fake 'pagecheck'; $null = New-Item -ItemType Directory -Force (Join-Path $pd 'sub')
+    Set-Content (Join-Path $pd 'ok.js') "const a = 'x\ny';"
+    Set-Content (Join-Path $pd 'sub\ok.mjs') 'export const b = 1;'
+    Set-Content (Join-Path $pd 'style.css') 'pas du js {'
+    Check 'page saine ⇒ aucune erreur' (@(Test-PageScripts $pd).Count -eq 0)
+    Set-Content (Join-Path $pd 'sub\ko.js') "const c = 'coupée`ren deux';"
+    $errs = @(Test-PageScripts $pd)
+    Check 'page cassée ⇒ une erreur, nommée par son chemin relatif' ($errs.Count -eq 1 -and $errs[0] -match '^sub\\ko\.js : SyntaxError') "$errs"
+    Check 'dossier absent ⇒ aucune erreur (copie legacy sans page/)' (@(Test-PageScripts (Join-Path $fake 'absent')).Count -eq 0)
 } finally { Remove-Item $fake -Recurse -Force -ErrorAction SilentlyContinue }
 
 # ── Verrou de déploiement (port fictif, journal dans un TEMP factice : le vrai journal n'est pas touché) ──

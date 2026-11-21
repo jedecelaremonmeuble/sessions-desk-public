@@ -30,6 +30,25 @@ function Get-DeployedCommit([string]$RunDir) {
     return $null
 }
 
+<# Scripts de la page qui ne se compilent pas (node --check) → une ligne par fichier en erreur, vide si tout va bien.
+   Une page dont app.js ne se compile pas répond 200 mais reste VIDE : ni le ping ni le démarrage ne le voient. Le
+   déploiement la refuse donc AVANT la coupure, sur la copie préparée — la page en service n'est pas touchée. #>
+function Test-PageScripts([string]$PageDir) {
+    if (-not (Test-Path $PageDir)) { return @() }
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if (-not $node) { throw 'node introuvable dans le PATH : impossible de vérifier la page.' }
+    $errors = @()
+    foreach ($f in Get-ChildItem $PageDir -File -Recurse -Include '*.js', '*.mjs', '*.cjs') {
+        $out = & $node --check $f.FullName 2>&1 | ForEach-Object { "$_" }
+        if ($LASTEXITCODE) {
+            $where = @($out | Where-Object { $_ -match ':\d+\s*$' })[0]
+            $what = @($out | Where-Object { $_ -match '^\w*Error\b' })[0]
+            $errors += "$($f.FullName.Substring($PageDir.TrimEnd('\', '/').Length + 1)) : $(if ($what) { $what } else { 'node --check en échec' })$(if ($where) { " ($($where.Trim()))" })"
+        }
+    }
+    return $errors
+}
+
 <# Met la copie en service au niveau de $Head sans arrêter le serveur : page/ remplacée (plan 'page'), puis
    DEPLOYED.txt réécrit — la copie correspond désormais à $Head, base du prochain déploiement. #>
 function Update-RunCopy([string]$Repo, [string]$Head, [string]$RunDir, [string]$Plan, [string]$Running) {
@@ -40,6 +59,11 @@ function Update-RunCopy([string]$Repo, [string]$Head, [string]$RunDir, [string]$
         if ($LASTEXITCODE -ne 0) { throw 'git archive en échec' }
         Expand-Archive $zip $tmp -Force; Remove-Item $zip
         $new = Join-Path $tmp 'page'; $dst = Join-Path $RunDir 'page'
+        $broken = @(Test-PageScripts $new)
+        if ($broken) {
+            Remove-Item $tmp -Recurse -Force
+            throw "déploiement RENONCÉ : la page de $($Head.Substring(0, 10)) ne se compile pas — $($broken -join ' ; '). La page en service n'a pas été touchée."
+        }
         # Fichier par fichier, écrit à côté puis renommé : le serveur ne sert jamais un app.js à moitié copié.
         foreach ($f in Get-ChildItem $new -File -Recurse) {
             $t = Join-Path $dst $f.FullName.Substring($new.Length + 1)
