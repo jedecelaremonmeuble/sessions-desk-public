@@ -4022,6 +4022,23 @@ const convWhen = at => {
 // createElement/textContent : jamais d'innerHTML, un transcript ne peut donc pas injecter de HTML. Liens : http(s) seuls.
 // Sous-ensemble utile : titres, paragraphes, listes (puces, numérotées, imbriquées), citations, blocs de code,
 // tableaux, filets ; en ligne : gras, italique, barré, code, liens [texte](url) et URL nues.
+// Fermeture du gras « **…** » : le premier « ** » où aucun italique « * » du contenu n'est resté ouvert, pour que
+// « **gras *italique*** » ferme l'italique puis le gras (et non le gras trop tôt, laissant « *italique » ouvert).
+// Contenu non vide, sans espace aux bords. Un seul parcours. Rend l'indice du « ** » fermant, ou -1.
+function mdBoldEnd(r) {
+  const blank = c => c === ' ' || c === '\t' || c === '\n' || c === '\r';
+  if (r.length < 5 || blank(r[2])) return -1;
+  let open = false;                                   // un « * » d'italique ouvert dans le contenu
+  for (let j = r.indexOf('*', 2); j !== -1; ) {
+    let k = j + 1; while (r[k] === '*') k++;
+    let at = j, run = k - j;
+    if (open) { open = false; at++; run--; }           // la première étoile ferme l'italique
+    if (run >= 2 && at > 2 && !blank(r[at - 1])) return at;
+    if (run % 2 === 1) open = !open;                  // un « ** » intérieur ne compte pas
+    j = r.indexOf('*', k);
+  }
+  return -1;
+}
 function mdInline(s) {
   const out = []; let buf = '', i = 0, m;
   const flush = () => { if (buf) { out.push({ k:'t', t:buf }); buf = ''; } };
@@ -4029,10 +4046,10 @@ function mdInline(s) {
     const r = s.slice(i), c = r[0];
     if (c === '\\' && /^[\\`*_[\]~#>|()-]$/.test(r[1] || '')) { buf += r[1]; i += 2; continue; }
     if (c === '`' && (m = /^(`+)(?!`)([\s\S]*?[^`])\1(?!`)/.exec(r))) { flush(); out.push({ k:'code', t:m[2].replace(/^ ([\s\S]*) $/, '$1') }); i += m[0].length; continue; }
-    if (c === '*' && (m = /^\*\*(?=\S)([\s\S]*?\S)\*\*/.exec(r))) { flush(); out.push({ k:'b', c:mdInline(m[1]) }); i += m[0].length; continue; }
+    if (c === '*' && r[1] === '*' && (m = mdBoldEnd(r)) > 0) { flush(); out.push({ k:'b', c:mdInline(r.slice(2, m)) }); i += m + 2; continue; }
     if (c === '_' && !/\w$/.test(buf) && (m = /^__(?=\S)([\s\S]*?\S)__(?!\w)/.exec(r))) { flush(); out.push({ k:'b', c:mdInline(m[1]) }); i += m[0].length; continue; }
     if (c === '~' && (m = /^~~(?=\S)([\s\S]*?\S)~~/.exec(r))) { flush(); out.push({ k:'s', c:mdInline(m[1]) }); i += m[0].length; continue; }
-    if (c === '*' && (m = /^\*(?=[^\s*])([^*\n]*?[^\s*])\*(?!\*)/.exec(r))) { flush(); out.push({ k:'i', c:mdInline(m[1]) }); i += m[0].length; continue; }
+    if (c === '*' && (m = /^\*(?![\s*])((?:[^*\n]|\*\*(?![\s*])[^*\n]*?[^\s*]\*\*)*?(?:[^\s*]|\*\*(?![\s*])[^*\n]*?[^\s*]\*\*))\*(?!\*)/.exec(r))) { flush(); out.push({ k:'i', c:mdInline(m[1]) }); i += m[0].length; continue; }
     if (c === '_' && !/\w$/.test(buf) && (m = /^_(?=[^\s_])([^_\n]*?[^\s_])_(?!\w)/.exec(r))) { flush(); out.push({ k:'i', c:mdInline(m[1]) }); i += m[0].length; continue; }
     if (c === '[' && (m = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/.exec(r))) { flush(); out.push({ k:'a', href:m[2], c:mdInline(m[1]) }); i += m[0].length; continue; }
     if (c === 'h' && !/\w$/.test(buf) && (m = /^https?:\/\/[^\s<>()`"]+/.exec(r))) {

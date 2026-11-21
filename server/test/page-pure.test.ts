@@ -337,7 +337,7 @@ describe('diffHeadline', () => {
 });
 
 // ───── Markdown des messages de Claude ─────
-const md = load(grab('mdInline') + grab('mdBlocks'), ['mdInline', 'mdBlocks']);
+const md = load(grab('mdBoldEnd') + grab('mdInline') + grab('mdBlocks'), ['mdInline', 'mdBlocks']);
 const mdInline = md.mdInline!, mdBlocks = md.mdBlocks!;
 const t = (s: string) => ({ k: 't', t: s });
 
@@ -348,6 +348,29 @@ describe('mdInline', () => {
     expect(mdInline('*i* et _j_')).toEqual([{ k: 'i', c: [t('i')] }, t(' et '), { k: 'i', c: [t('j')] }]);
     expect(mdInline('~~x~~')).toEqual([{ k: 's', c: [t('x')] }]);
     expect(mdInline('**gras _et italique_**')).toEqual([{ k: 'b', c: [t('gras '), { k: 'i', c: [t('et italique')] }] }]);
+  });
+
+  test('gras et italique imbriqués, fermés ensemble', () => {
+    expect(mdInline('**gras *italique***')).toEqual([{ k: 'b', c: [t('gras '), { k: 'i', c: [t('italique')] }] }]);
+    expect(mdInline('*italique **gras***')).toEqual([{ k: 'i', c: [t('italique '), { k: 'b', c: [t('gras')] }] }]);
+    expect(mdInline('***les deux***')).toEqual([{ k: 'b', c: [{ k: 'i', c: [t('les deux')] }] }]);
+    expect(mdInline('a ***b*** c')).toEqual([t('a '), { k: 'b', c: [{ k: 'i', c: [t('b')] }] }, t(' c')]);
+  });
+
+  test('gras suivi d’une étoile seule, gras sans fermeture', () => {
+    expect(mdInline('**gras***')).toEqual([{ k: 'b', c: [t('gras')] }, t('*')]);
+    expect(mdInline('**a** et **b**')).toEqual([{ k: 'b', c: [t('a')] }, t(' et '), { k: 'b', c: [t('b')] }]);
+    expect(mdInline('**pas fermé')).toEqual([t('**pas fermé')]);
+    expect(mdInline('** pas du gras**')).toEqual([t('** pas du gras**')]);
+  });
+
+  test('texte plein d’étoiles jamais fermées : reste rapide', () => {
+    // Une recherche de fermeture qui recopierait le reste du texte à chaque « ** » prendrait des dizaines de secondes ici.
+    for (const s of ['**a '.repeat(4000), '*a **b '.repeat(3000), '**x* '.repeat(3000)]) {
+      const t0 = performance.now();
+      mdInline(s);
+      expect(performance.now() - t0).toBeLessThan(2000);
+    }
   });
 
   test('code : contenu brut, doubles accents graves, espaces de bord retirés', () => {
