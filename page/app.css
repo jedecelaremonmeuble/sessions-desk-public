@@ -497,3 +497,11 @@ button.danger { color:var(--waiting); } button.danger:hover { border-color:var(-
 .cfgerr.warn { border-color:var(--ask); color:var(--ask); }
 .cfgerr ul { margin:4px 0 0; padding-left:18px; }
 .cfgerr summary { cursor:pointer; }
+.cfgdlg { width:min(900px, 94vw); height:min(760px, 90vh); padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+.cfgdlg[open] { display:flex; flex-direction:column; gap:6px; }
+.cfgdlg::backdrop { background:rgba(0,0,0,.35); }
+.cfgfile, .cfgprot { color:var(--mute); font-size:12px; word-break:break-all; }
+.cfgdlg textarea { flex:1; min-height:200px; resize:none; font:12px/1.45 ui-monospace, Consolas, monospace; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:8px; tab-size:2; }
+.cfgout { font-size:12px; max-height:22vh; overflow:auto; }
+.cfgout .bad { color:var(--waiting); } .cfgout .ok { color:var(--busy); } .cfgout .warn { color:var(--ask); }
+.cfgbtns { display:flex; gap:8px; justify-content:flex-end; }

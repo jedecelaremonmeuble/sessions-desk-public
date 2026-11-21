@@ -101,6 +101,14 @@ page says which. A file that becomes unreadable while the server runs leaves the
 command-line option (`--claude-args`, `--closed-days`…) keeps precedence over the file. The tagger and the Teams
 watcher read the file again at each pass.
 
+The ⚙ button of the page opens the file in an editor, **from this machine only** (never through the tailnet, even
+for the owner). The server checks the text before writing it as typed: readable JSON, matching the schema, and no
+protected key changed. Protected keys run a program or widen who can act on the machine (`claudeArgs`,
+`tailscaleExe`, `peers`, `newSession.folders`, `modules.launcher`, `modules.automations`, `modules.quota.file`,
+`modules.teams.export`, `modules.teams.inbound.cwd` and `domains`, and the Microsoft sign-in settings of
+`modules.teams`); change them in the file itself. The file must not have changed since it was opened, and its
+previous version is kept as `config.json.bak-page-<date>` (the 5 latest).
+
 | Key | Purpose |
 |---|---|
 | `ui.pathPrefix` | Folder prefix not repeated in the list (for instance your main repository) |

@@ -49,6 +49,9 @@ function applyStaticText() {
   set('boardbtn', 'title', 'Tableau par projet : à cadrer → en cours → en recette → à merger → livré  ( t )', 'Board by project: to scope → in progress → in review → to merge → shipped  ( t )');
   set('bcbtn', 'title', 'Écrire le même message à plusieurs sessions', 'Send the same message to several sessions');
   set('newbtn', 'title', 'Lancer une nouvelle session  ( + )', 'Start a new session  ( + )');
+  set('cfgbtn', 'title', 'Configuration du poste (config.json)', 'Configuration of this machine (config.json)');
+  set('cfgcheck', '', 'Vérifier', 'Check'); set('cfgsave', '', 'Enregistrer', 'Save'); set('cfgclose', '', 'Fermer', 'Close');
+  set('cfgtitle', '', 'Configuration du poste', 'Configuration of this machine');
   set('mfind', 'title', 'Afficher les passages trouvés dans les conversations', 'Show the matches found in conversations');
   set('mfind', null, 'Passages trouvés dans les conversations →', 'Matches found in conversations →');
   set('mback', 'title', 'Revenir à la liste des sessions  ( Échap )', 'Back to the session list  ( Esc )');
@@ -2437,6 +2440,51 @@ function whoami() {
   fetch('/api/whoami', { cache:'no-store' }).then(r => r.json()).then(w => { const was = canWrite; canWrite = !!w.write; document.body.classList.toggle('ro', !canWrite); if (canWrite && !was) say(T('écriture autorisée à distance (' + w.login + ')', 'remote writing allowed (' + w.login + ')')); renderDetail(true); }).catch(() => {});
 }
 if (REMOTE) { document.body.classList.add('ro', 'remote'); whoami(); }
+// ───────────── Configuration du poste (config.json), éditée depuis le poste seulement ─────────────
+// Le texte est vérifié par le serveur (JSON, schéma, clés protégées) avant d'être enregistré tel que tapé ; les clés
+// qui font exécuter un programme restent à changer dans le fichier. Enregistré : appliqué tout de suite, sauf ce qui
+// attend un redémarrage (dit dans le compte rendu).
+let cfgBase = null;
+async function openCfg() {
+  if (REMOTE) return;
+  const d = $('cfgdlg'), out = $('cfgout');
+  let r;
+  try { r = await (await fetch('/api/config', { cache:'no-store' })).json(); } catch { say(T('configuration illisible', 'configuration unreadable')); return; }
+  if (!r || typeof r.text !== 'string') { say((r && r.error) || T('configuration illisible', 'configuration unreadable')); return; }
+  cfgBase = r.base; $('cfgtext').value = r.text;
+  $('cfgfile').textContent = r.file + (r.exists ? '' : T(' (absent : il sera créé)', ' (missing: it will be created)'));
+  $('cfgprot').textContent = T('Non modifiables ici, à changer dans le fichier : ', 'Not editable here, change them in the file: ') + (r.protected || []).join(', ');
+  $('cfgsave').disabled = !r.writable; $('cfgsave').title = r.writable ? '' : T('serveur en lecture seule', 'read-only server');
+  out.textContent = ''; out.className = 'cfgout';
+  if (!d.open) d.showModal();
+  $('cfgtext').focus();
+}
+// Compte rendu d'une vérification ou d'un enregistrement (rendu PUR à partir de la réponse du serveur : testé).
+function cfgLines(r, kind) {
+  const L = [];
+  if (!r) return [['bad', T('pas de réponse du serveur', 'no answer from the server')]];
+  if (r.conflict) L.push(['bad', T('Le fichier a changé depuis son ouverture : rouvrir pour repartir de sa version actuelle (rien n’a été écrit).', 'The file changed since it was opened: reopen it to start from its current version (nothing was written).')]);
+  if (r.error) { L.push(['bad', T('JSON illisible : ', 'Unreadable JSON: ') + r.error]); return L; }
+  if (Array.isArray(r.protectedChanged) && r.protectedChanged.length) L.push(['bad', T('Clés protégées modifiées (à changer dans le fichier) : ', 'Protected keys changed (change them in the file): ') + r.protectedChanged.join(', ')]);
+  if (Array.isArray(r.problems)) for (const p of r.problems) L.push(['bad', p]);
+  const ch = Array.isArray(r.changed) ? r.changed : [];
+  if (r.saved) {
+    L.push(['ok', T('Enregistré', 'Saved') + (r.backup ? T(' — version précédente : ', ' — previous version: ') + r.backup : '') + '.']);
+    if (Array.isArray(r.restart) && r.restart.length) L.push(['warn', T('Au prochain démarrage du serveur : ', 'At the next server start: ') + r.restart.join(', ')]);
+    else L.push(['ok', T('Appliqué tout de suite.', 'Applied at once.')]);
+  } else if (r.ok && kind === 'check') L.push(['ok', ch.length ? T('Conforme. ', 'Valid. ') : T('Conforme, rien de modifié.', 'Valid, nothing changed.')]);
+  if (ch.length && !r.conflict) L.push(['', T('Modifié : ', 'Changed: ') + ch.join(', ')]);
+  return L;
+}
+async function cfgSend(kind) {
+  const out = $('cfgout'), text = $('cfgtext').value;
+  const body = JSON.stringify(kind === 'save' ? { text, base: cfgBase } : { text });
+  let r = null;
+  try { r = await (await fetch('/api/config/' + kind, { method:'POST', headers:{ 'content-type':'application/json' }, body })).json(); } catch { r = null; }
+  out.textContent = '';
+  for (const [cls, t] of cfgLines(r, kind)) { const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = t; out.appendChild(d); }
+  if (r && r.saved && typeof r.text === 'string') { cfgBase = r.base; $('cfgtext').value = r.text; say(T('configuration enregistrée', 'configuration saved')); }
+}
 async function post(path) {
   if (!canWrite) return { error: T('lecture seule à distance', 'read-only remotely'), code: 4 };
   if (link.down) return { error: T('serveur injoignable — reconnexion en cours', 'server unreachable — reconnecting'), code: 5 };
@@ -4155,6 +4203,8 @@ $('bell').onclick = () => { localStorage.setItem('cc.notifSeen', String(Date.now
 $('mback').onclick = () => { if (selected) select(null); else if (launchMode) closeLauncher(); else if (chatsMode) closeChats(); else if (boardMode) closeBoard(); else if (newMode) closeNew(); else if (bcMode) closeBc(); else setPane(false); };
 $('mfind').onclick = () => setPane(true);
 $('newbtn').onclick = () => newMode ? closeNew() : openNew();
+$('cfgbtn').hidden = REMOTE; $('cfgbtn').onclick = () => { void openCfg(); };
+$('cfgcheck').onclick = () => { void cfgSend('check'); }; $('cfgsave').onclick = () => { void cfgSend('save'); }; $('cfgclose').onclick = () => $('cfgdlg').close();
 $('bcbtn').onclick = () => bcMode ? closeBc() : openBc();
 $('boardbtn').onclick = () => boardMode ? closeBoard() : openBoard();
 $('launchbtn').onclick = () => launchMode ? closeLauncher() : openLauncher();

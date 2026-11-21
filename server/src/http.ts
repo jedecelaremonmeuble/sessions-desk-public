@@ -16,7 +16,8 @@ import { join } from 'node:path';
 import { Actions } from './actions.ts';
 import { defaultShortcuts } from './commands.ts';
 import { Automations } from './automations.ts';
-import type { Config } from './config.ts';
+import { reloadConfig, type Config } from './config.ts';
+import { checkConfig, openConfig, PROTECTED, saveConfig } from './config-edit.ts';
 import { startGitRefresh } from './gitpr.ts';
 import { answerCard, lookupCards } from './cards.ts';
 import { Launcher, lookupDeliveryDiff, lookupHd, runLauncherOrder } from './launcher.ts';
@@ -45,7 +46,9 @@ const PAGE: Record<string, [string, string]> = {
 };
 const JSON_TYPE = 'application/json; charset=utf-8';
 const REMOTE_OK = new Set(['/', '/app.js', '/app.css', '/api/ping', '/api/state', '/api/teams-conversations', '/api/teams-thread', '/api/closed', '/api/screen', '/api/transcript', '/api/find', '/api/folders', '/api/commands', '/api/launcher', '/api/launcher/file', '/api/launcher/hd', '/api/launcher/delivery-diff', '/api/tag-vocab', '/api/automations', '/api/automations/file', '/api/launcher/cards', '/api/image']);
-const REMOTE_NEVER = new Set(['/api/stop', '/api/hook', '/api/test-busy', '/api/relay/restart']);
+const REMOTE_NEVER = new Set(['/api/stop', '/api/hook', '/api/test-busy', '/api/relay/restart', '/api/config', '/api/config/check', '/api/config/save']);
+/** Édition de config.json (config-edit.ts) : depuis le poste seulement. */
+const CONFIG_ROUTES = new Set(['/api/config', '/api/config/check', '/api/config/save']);
 const ACTIONS = new Set(['/api/focus', '/api/reopen', '/api/ack', '/api/send', '/api/keys', '/api/model', '/api/relaunch', '/api/fav', '/api/new', '/api/close', '/api/hide', '/api/reopen-many', '/api/reboot-dismiss', '/api/git-refresh', '/api/close-many', '/api/relaunch-many', '/api/send-many', '/api/draft-save', '/api/draft-delete', '/api/tags', '/api/teams-wait', '/api/teams-seen', '/api/teams-reply', '/api/teams-link', '/api/launcher/order', '/api/automations/order', '/api/launcher/answer', '/api/relay/restart']);
 const HEADLESS_REFUSED = new Set(['/api/focus', '/api/send', '/api/keys', '/api/model', '/api/close', '/api/relaunch']);
 /** Routes d'un module optionnel : sans lui, elles n'existent pas (404, comme une route inconnue). */
@@ -345,6 +348,7 @@ export class Server {
       } else { req.resume(); json(res, 403, '{}'); }
       return;
     }
+    if (CONFIG_ROUTES.has(path)) { await this.#config(req, res, path, method, origin, remote); return; }
     if (method === 'GET' && (origin === undefined || origin === this.cfg.origin)) {
       switch (path) {
         case '/': case '/app.js': case '/app.css': {
@@ -391,6 +395,28 @@ export class Server {
     }
     this.#queue.push({ req, res, path, query: url.searchParams });
     this.#wake?.();
+  }
+
+  /** Édition de config.json depuis la page (config-edit.ts). Jamais à distance, même pour le propriétaire : plusieurs
+   *  réglages font exécuter un programme, et ceux-là restent de toute façon hors d'atteinte (PROTECTED). */
+  async #config(req: IncomingMessage, res: ServerResponse, path: string, method: string, origin: string | undefined, remote: boolean): Promise<void> {
+    if (remote) { req.resume(); json(res, 403, { error: T('configuration : modifiable depuis le poste seulement', 'configuration: editable from this machine only') }); return; }
+    const file = this.cfg.configFile;
+    if (path === '/api/config' && method === 'GET' && (origin === undefined || origin === this.cfg.origin)) {
+      req.resume(); json(res, 200, { ...openConfig(file), file, protected: PROTECTED, writable: this.cfg.allowWrite }); return;
+    }
+    if (path === '/api/config' || method !== 'POST' || origin !== this.cfg.origin) { req.resume(); json(res, 403, '{}'); return; }
+    if (!this.cfg.allowWrite) { req.resume(); json(res, 403, { error: T('serveur à côté en lecture seule (--allow-write pour écrire)', 'read-only side server (--allow-write to write)') }); return; }
+    const raw = await readBody(req); if (raw === null) { tooBig(req, res); return; }
+    let j: unknown; try { j = JSON.parse(raw); } catch { json(res, 400, { error: T('corps illisible', 'unreadable body') }); return; }
+    const text = (j as { text?: unknown })?.text, base = (j as { base?: unknown })?.base;
+    if (typeof text !== 'string' || (path === '/api/config/save' && typeof base !== 'string')) { json(res, 400, { error: T('text (et base) attendus', 'text (and base) expected') }); return; }
+    if (path === '/api/config/check') { let cur: string | null = null; try { cur = readFileSync(file, 'utf8'); } catch { /* absent */ } json(res, 200, checkConfig(cur, text)); return; }
+    let r: ReturnType<typeof saveConfig>;
+    try { r = saveConfig(file, base as string, text); } catch (e) { json(res, 500, { error: T(`enregistrement en échec : ${(e as Error).message}`, `save failed: ${(e as Error).message}`) }); return; }
+    if (!r.saved) { json(res, r.conflict ? 409 : 200, r); return; }
+    const line = reloadConfig(this.cfg); process.stdout.write(`${line} (page)\n`);
+    json(res, 200, { ...r, line, restart: this.cfg.configRestart, ...openConfig(file) });
   }
 
   /** `/api/peer/<poste>/<route>` : relais vers un autre poste du propriétaire (peers.ts). Liste fermée de routes ;

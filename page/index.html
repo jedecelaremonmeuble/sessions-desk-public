@@ -22,6 +22,7 @@
         <button id="boardbtn" title="Tableau par projet : à cadrer → en cours → en recette → à merger → livré  ( t )">▦</button>
         <button id="bcbtn" title="Écrire le même message à plusieurs sessions">✉</button>
         <button id="newbtn" title="Lancer une nouvelle session  ( + )">+</button>
+        <button id="cfgbtn" title="Configuration du poste (config.json)" hidden>⚙</button>
       </div>
     </div>
     <button id="mfind" title="Afficher les passages trouvés dans les conversations">Passages trouvés dans les conversations →</button>
@@ -30,5 +31,12 @@
   <div id="mbar"><button id="mback" title="Revenir à la liste des sessions  ( Échap )">← Sessions</button><span id="mtitle"></span></div>
   <main id="main"></main>
 </div>
+<dialog id="cfgdlg" class="cfgdlg">
+  <div class="cfghead"><b id="cfgtitle">Configuration du poste</b> <span id="cfgfile" class="cfgfile"></span></div>
+  <div id="cfgprot" class="cfgprot"></div>
+  <textarea id="cfgtext" spellcheck="false" autocomplete="off"></textarea>
+  <div id="cfgout" class="cfgout" role="status" aria-live="polite"></div>
+  <div class="cfgbtns"><button id="cfgcheck">Vérifier</button><button id="cfgsave">Enregistrer</button><button id="cfgclose">Fermer</button></div>
+</dialog>
 <script src="/app.js"></script>
 </body></html>
