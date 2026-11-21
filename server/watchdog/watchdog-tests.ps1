@@ -86,7 +86,8 @@ try {
     $added = @(Get-Content $log | Select-Object -Skip $n) -join "`n"
     Check 'déploiement : tracé comme tel' ($added -match 'démarrage après déploiement de abc1234567' -and $added -notmatch 'serveur muet') $added
     Check 'déploiement : pas de délai de grâce (5 s de moins que la relance après plantage)' ($took -lt $tookCrash - 3) "$took s contre $tookCrash s"
-    Check 'déploiement : marqueur consommé' (-not (Test-Path $marker))
+    Check 'déploiement : marqueur gardé (retiré par le déploiement, pas par le watchdog)' (Test-Path $marker)
+    Remove-Item $marker -Force
 
     # 4. Serveur FIGÉ : un process dont la ligne de commande est celle du serveur, qui tient le port sans répondre.
     Stop-Process -Id $pid2 -Force; Start-Sleep 1
@@ -95,7 +96,14 @@ try {
     $script:started.Add($h.Id)
     for ($i = 0; $i -lt 20 -and -not (Holder); $i++) { Start-Sleep -Milliseconds 250 }
     Check 'figé : le faux serveur tient le port' ((Holder) -eq $h.Id)
+    # 4 a. Le même, lancé pour un déploiement qui l'attend encore (marqueur récent, pid noté après lui) : il démarre,
+    #      on n'y touche pas. Marqueur périmé (déploiement interrompu) : plus de protection, et il est retiré.
+    Set-Content $marker 'abc1234567'; Set-Content $pidFile $h.Id
+    $n = LogLines; RunWd
+    Check 'déploiement en attente : serveur encore muet laissé en vie, rien de tracé' ([bool](Get-Process -Id $h.Id -ErrorAction SilentlyContinue) -and (LogLines) -eq $n)
+    (Get-Item $marker).LastWriteTime = (Get-Date).AddMinutes(-3)
     RunWd
+    Check 'marqueur périmé : retiré' (-not (Test-Path $marker))
     Check 'figé : arrêté' (-not (Get-Process -Id $h.Id -ErrorAction SilentlyContinue))
     Check 'figé : vrai serveur relancé' (WaitUp)
     Check 'figé : arrêt tracé' ((Get-Content $log -Raw) -match "serveur figé ou muet \(pid $($h.Id)\)")

@@ -23,11 +23,15 @@
                 seul le serveur est installé ; c'est ce que lance Auto-Update.ps1 sur un tel poste).
   -Restart    : redémarre le serveur même si seule la page a changé.
   -Rollback   : accepte de remettre en service un commit plus ancien que celui qui tourne.
+  -Force      : déploie même si la préparation a traîné (sans lui, un poste saturé fait renoncer avant la coupure).
+
+  Un redémarrage dont le nouveau serveur reste muet revient de lui-même à la version précédente et sort en échec
+  (Install-NodeWatchdog.ps1).
 
 .EXAMPLE
   pwsh -NoProfile -File server/watchdog/Deploy.ps1
 #>
-param([string]$Target = (Join-Path $env:USERPROFILE '.claude\scripts'), [switch]$SkipServer, [switch]$ServerOnly, [switch]$Restart, [switch]$Rollback)
+param([string]$Target = (Join-Path $env:USERPROFILE '.claude\scripts'), [switch]$SkipServer, [switch]$ServerOnly, [switch]$Restart, [switch]$Rollback, [switch]$Force)
 $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -117,7 +121,7 @@ if ($plan -ne 'restart') {
 }
 Write-Host "redémarrage du serveur : $why." -ForegroundColor Yellow
 Write-DeployLog 8765 "$short : redémarrage du serveur ($why)"
-& (Join-Path $PSScriptRoot 'Install-NodeWatchdog.ps1') -Port 8765 -Primary
+& (Join-Path $PSScriptRoot 'Install-NodeWatchdog.ps1') -Port 8765 -Primary -Force:$Force
 if (-not $?) { throw 'réinstallation du serveur Node en échec — voir ci-dessus.' }
 Write-Host "Production (8765) redéployée sur le commit $short ($branch)." -ForegroundColor Green
 
