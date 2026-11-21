@@ -1,9 +1,9 @@
-// Point d'entrée du serveur Node du poste de pilotage (lot 2b, étape 2).
+// Point d'entrée du serveur.
 //
 //   node server/src/main.ts [--port 8767] [--allow-write] [--no-background] [--primary] [--driver <exe>]
 //
-// À côté du .ps1 (défaut, 8767 + relais 8768) : lecture seule, sans notification ni tâche de fond partagée.
-// Sur 8765 (bascule, étape 5, sur go) : rôle « primary », écriture permise.
+// Sur 8765 : rôle « primary », écriture permise (le serveur du poste).
+// Ailleurs (défaut, 8767 + relais 8768) : à côté du principal, lecture seule, sans notification ni tâche de fond partagée.
 import { join } from 'node:path';
 import { parseArgs, watchConfig } from './config.ts';
 import { DriverClient } from './driver.ts';

@@ -73,7 +73,7 @@ export function cleanTags(raw: unknown): SessionTag[] | null {
   return out.length ? out : null;
 }
 
-// ───── Correction à la main (lot 3) — même règle que le .ps1 (ConvertTo-TagList, Get-SessionTags, Set-SessionTag) ─────
+// ───── Correction à la main — même règle que le .ps1 (ConvertTo-TagList, Get-SessionTags, Set-SessionTag) ─────
 export interface ManualTags { add: { axis: string; v: string }[]; remove: { axis: string; v: string }[] }
 const TAG_EDITABLE = new Set(['domaine', 'outil', 'fonction']);
 function tagList(raw: unknown): { axis: string; v: string }[] {
@@ -272,7 +272,7 @@ export class Dashboard {
     return c.tags;
   }
 
-  // ───── Correction à la main (lot 3) : sessions-dashboard-tags-manual.json, écrit par le serveur principal ─────
+  // ───── Correction à la main : sessions-dashboard-tags-manual.json, écrit par le serveur principal ─────
   tagsManual = new Map<string, ManualTags>();
   reloadTagsManual(force = false): void {
     const p = this.sf('sessions-dashboard-tags-manual.json');
@@ -484,7 +484,7 @@ export class Dashboard {
     const via = hooked ? 'hook' : 'screen';
     if (!c.logged) {
       c.logged = true;
-      // Journal partagé : seul le serveur principal l'écrit (à côté du .ps1, chaque ligne serait en double).
+      // Journal partagé : seul le serveur principal l'écrit (une instance à côté l'écrirait en double).
       if (this.cfg.primary || this.cfg.allowWrite) {
         try { addContent(this.sf('sessions-dashboard-stale.jsonl'), JSON.stringify({ at: now, via, pid: s.pid, sessionId: s.sessionId, busySince: mark, stopAt: stop, version: s.version ?? null })); } catch { /* idem */ }
       }

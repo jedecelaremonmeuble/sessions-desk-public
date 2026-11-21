@@ -450,7 +450,7 @@ function rank(n: string): number { return /^result\.md/i.test(n) ? 0 : /^(review
 /**
  * « "$($q.weeklyResetsAt)" » : ConvertFrom-Json en a fait un DateTime, interpolé au format invariant
  * « MM/dd/yyyy HH:mm:ss » (UTC pour une date en Z, heure locale pour un décalage). Les clés déjà signalées par le
- * .ps1 (fichier d'alertes de la production) restent ainsi reconnues après la bascule.
+ * serveur PowerShell historique (fichier d'alertes) restent ainsi reconnues.
  */
 export function psDateString(v: unknown): string {
   if (typeof v !== 'string') return psString(v);

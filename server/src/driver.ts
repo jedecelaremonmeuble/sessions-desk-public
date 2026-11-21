@@ -1,4 +1,4 @@
-// Client du pilote .NET (driver/), lot 2b, étape 1.
+// Client du pilote .NET (driver/).
 //
 // Le pilote est un process RÉSIDENT : une requête JSON par ligne sur son stdin, une réponse par ligne sur son stdout,
 // dans l'ordre où elles finissent (d'où l'id). Ce client :

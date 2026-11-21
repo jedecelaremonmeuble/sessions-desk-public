@@ -227,7 +227,7 @@ export function resetState(fx: { claude: string; ids: typeof GUIDS; t0: number }
   for (const f of readdirSync(join(claude, 'state'))) if (/-88\d\d\.(json|jsonl|log)$/.test(f)) rmSync(join(claude, 'state', f), { force: true });
   st('sessions-dashboard-favs.json', JSON.stringify([ids.A, ids.H]));
   st('sessions-dashboard-hidden.json', JSON.stringify([ids.I]));
-  // Correction à la main des tags (lot 3) : A perd « outil:infra » et gagne une fonctionnalité ; C (fichier automatique
+  // Correction à la main des tags : A perd « outil:infra » et gagne une fonctionnalité ; C (fichier automatique
   // invalide) n'a que son ajout ; entrées écartées : axe non modifiable, identifiant invalide.
   st('sessions-dashboard-tags-manual.json', JSON.stringify({
     [ids.A]: { add: [{ axis: 'fonction', v: 'coffre-fort' }, { axis: 'hd', v: 'HD-1' }], remove: [{ axis: 'outil', v: 'infra' }] },

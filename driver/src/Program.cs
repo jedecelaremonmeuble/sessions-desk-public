@@ -1,4 +1,4 @@
-// Pilote Windows Terminal du poste de pilotage des sessions (lot 2b, étape 1).
+// Pilote Windows Terminal du poste de pilotage des sessions.
 //
 // Process RÉSIDENT, lancé et relancé par le serveur Node. Protocole : une requête JSON par ligne sur stdin
 // ({"id":1,"op":"read","args":{"pid":1234}}), une réponse JSON par ligne sur stdout

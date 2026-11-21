@@ -1,4 +1,4 @@
-// Livraison refusée (lot 1) : « J'ai relu, livrer » envoie `merge <hd> --adopt-head <sha>`, et le diff est lu par
+// Livraison refusée : « J'ai relu, livrer » envoie `merge <hd> --adopt-head <sha>`, et le diff est lu par
 // `delivery-diff` contre une FAUSSE commande du lanceur (SD_LAUNCHER_CLI) — jamais la vraie.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

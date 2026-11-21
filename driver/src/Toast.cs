@@ -8,7 +8,6 @@ namespace SessionsDesk.Driver;
 /// Notification Windows — même XML et même expéditeur que <c>Show-Toast</c> du serveur PowerShell : l'AUMID de
 /// Windows PowerShell, déjà enregistré sur tout poste Windows (une appli non empaquetée n'a pas le sien).
 /// Le clic ouvre <c>launch</c> par protocole (<c>cc-focus://&lt;pid&gt;</c> ou l'URL de la page).
-/// La notification Electron la remplacera au lot 3.
 /// </summary>
 static class Toast
 {

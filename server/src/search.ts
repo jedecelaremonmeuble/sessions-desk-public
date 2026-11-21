@@ -1,7 +1,7 @@
 // RECHERCHE PLEIN TEXTE dans les conversations — portage de -IndexSearch (indexeur), TextSearch (C#) et
 // Find-InConversations. Index partagé : ~/.claude/state/search-index (<id>.txt « horodatage TAB rôle TAB texte »,
-// <id>.norm en minuscules sans accents, manifest.json). À côté du .ps1, c'est LUI qui le tient : l'indexeur ne
-// tourne ici qu'en rôle « primary ».
+// <id>.norm en minuscules sans accents, manifest.json). C'est le serveur principal qui le tient : l'indexeur ne
+// tourne qu'en rôle « primary ».
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Dashboard } from './state.ts';
@@ -84,7 +84,7 @@ export class Search {
   find(query: string): Record<string, unknown> {
     const t0 = performance.now();
     // « domaine:telephonie sms » : les filtres de tags restreignent aux sessions qui portent CHACUN d'eux (valeur exacte),
-    // les autres mots sont cherchés dans les conversations comme avant (le cadrage, lot 2).
+    // les autres mots sont cherchés dans les conversations comme avant.
     const all = [...new Set(norm(query).split(' ').filter((x) => x.length >= 2))];
     const tagToks = all.filter((x) => TAG_TOKEN.test(x));
     const tokens = all.filter((x) => !TAG_TOKEN.test(x));

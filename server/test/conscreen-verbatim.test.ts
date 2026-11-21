@@ -1,5 +1,5 @@
-// La classe ConScreen du pilote est celle du serveur PowerShell, à l'octet près : tant que le .ps1 est en production,
-// un correctif de l'un DOIT être porté dans l'autre — ce test échoue tant qu'il ne l'est pas.
+// La classe ConScreen du pilote est celle du serveur PowerShell historique, à l'octet près. Sauté sans legacy/ (ce
+// dépôt) ; là où legacy/ est présent, un correctif de l'un doit être porté dans l'autre — ce test échoue sinon.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';

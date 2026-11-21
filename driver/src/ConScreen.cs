@@ -1,6 +1,6 @@
 // ConScreen — extraite TELLE QUELLE de legacy/sessions-dashboard.ps1 (lignes 822-1003, commit a9e92eb).
-// Ne pas la modifier ici sans porter le changement dans le .ps1 tant qu'il est en production (et inversement).
-// tests/conscreen-verbatim.test.ts vérifie que le bloc est identique à celui du .ps1.
+// Le .ps1 n'est pas dans ce dépôt : server/test/conscreen-verbatim.test.ts ne compare les deux blocs que là où
+// legacy/ est présent.
 #nullable disable
 using System; using System.Text; using System.Runtime.InteropServices;
 public static class ConScreen {
