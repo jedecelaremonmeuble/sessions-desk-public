@@ -61,6 +61,31 @@ test('la pièce collée est annoncée comme texte collé dans le message', () =>
     'regarde ça Texte collé (120 lignes) : "C:\\u\\texte-colle-070509.json" Capture : "C:\\u\\x.png" Texte collé (1 ligne) : "C:\\u\\court.txt"');
 });
 
+describe('zone vide, texte collé joint : il devient le message', () => {
+  const lists: Record<string, unknown[]> = {
+    un: [{ path: 'C:/u/a.txt', pasted: 40 }],
+    deux: [{ path: 'C:/u/a.txt', pasted: 40 }, { path: 'C:/u/b.txt', pasted: 9 }],
+    capture: [{ path: 'C:/u/x.png', img: true }],
+    attente: [{ path: null, pasted: 40 }],
+  };
+  const withAttachments = new Function('attList', `${source('withAttachments', 'key, text')}; return withAttachments;`)((k: string) => lists[k]) as
+    (key: string, text: string) => string;
+  test('un texte collé : consigne de le lire et de faire ce qu’il demande, puis sa référence', () => {
+    expect(withAttachments('un', '  ')).toBe(
+      'Mon message est dans le texte collé joint : lis-le en entier et fais ce qu’il demande, comme si je l’avais tapé. Texte collé (40 lignes) : "C:/u/a.txt"');
+  });
+  test('plusieurs textes collés : consigne au pluriel', () => {
+    expect(withAttachments('deux', '')).toMatch(/^Mon message est dans les textes collés joints : lis-les en entier/);
+  });
+  test('un message tapé garde la main : pas de consigne ajoutée', () => {
+    expect(withAttachments('un', 'résume')).toBe('résume Texte collé (40 lignes) : "C:/u/a.txt"');
+  });
+  test('capture seule, ou pièce pas encore reçue : rien d’ajouté', () => {
+    expect(withAttachments('capture', '')).toBe('Capture : "C:/u/x.png"');
+    expect(withAttachments('attente', '')).toBe('');
+  });
+});
+
 test('les zones de réponse ne tronquent plus en silence (le serveur refuse au-delà de 4 000, le texte reste)', () => {
   expect(js).not.toMatch(/promptArea\('sendtext'\); inp\.maxLength/);
   expect(js).not.toMatch(/promptArea\('bc-text'\); tx\.maxLength/);

@@ -2608,9 +2608,15 @@ function lineKeys(e) {
   const ok = r.insert ? document.execCommand('insertText', false, r.insert) : document.execCommand('delete');
   if (!ok) { t.setRangeText(r.insert, r.from, r.to, 'end'); t.dispatchEvent(new Event('input')); }
 }
+// Zone vide mais texte collé joint : le message EST ce texte. Sans consigne, la session lisait le fichier puis demandait
+// quoi en faire ; on lui dit de le traiter comme s'il avait été tapé (commandes comprises).
 function withAttachments(key, text) {
-  const refs = attList(key).filter(a => a.path).map(a => (a.pasted ? 'Texte collé (' + a.pasted + (a.pasted > 1 ? ' lignes' : ' ligne') + ')' : a.img ? 'Capture' : 'Fichier') + ' : "' + a.path + '"');
-  return [text.trim(), ...refs].filter(Boolean).join(' ');
+  const list = attList(key).filter(a => a.path), typed = text.trim();
+  const refs = list.map(a => (a.pasted ? 'Texte collé (' + a.pasted + (a.pasted > 1 ? ' lignes' : ' ligne') + ')' : a.img ? 'Capture' : 'Fichier') + ' : "' + a.path + '"');
+  const pasted = list.filter(a => a.pasted).length;
+  const lead = !typed && pasted ? (pasted > 1 ? 'Mon message est dans les textes collés joints : lis-les en entier et fais ce qu’ils demandent, comme si je les avais tapés.'
+                                              : 'Mon message est dans le texte collé joint : lis-le en entier et fais ce qu’il demande, comme si je l’avais tapé.') : '';
+  return [typed || lead, ...refs].filter(Boolean).join(' ');
 }
 function clearAttachments(key) { for (const a of attList(key)) if (a.url) URL.revokeObjectURL(a.url); attachSets[key] = []; refreshAttach(key); }
 async function uploadFile(key, file, pasted = 0) {
