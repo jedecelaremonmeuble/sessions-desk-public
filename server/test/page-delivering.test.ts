@@ -24,6 +24,20 @@ describe('étape delivering', () => {
     // Avant la demande de livraison, rien ne change.
     expect(fns.runOrders('relecture', 'pr-awaiting-approval', 42)).toEqual(['merge', 'review', 'recette-skip', 'rework']);
   });
+  test('runOrders : pas de second feu vert sur un run go, sauf dev mort', () => {
+    expect(fns.runOrders('go', null, null)).toEqual([]);
+    expect(fns.runOrders('go', 'dev-failed', null)).toEqual(['go']);
+    expect(fns.runOrders('go', 'dev-abandoned', null)).toEqual(['go']);
+    expect(fns.runOrders('diagnostic', null, null)).toEqual(['go', 'verdict']);
+  });
+  test('goHeldFor : pas de go tant que le dernier run est celui de la carte répondue', () => {
+    const goHeldFor = new Function(grab('goHeldFor') + '\nreturn goHeldFor;')() as (h: Map<string, string>, hd: unknown, d: string | null) => boolean;
+    const held = new Map([['111111', 'run-diag']]);
+    expect(goHeldFor(held, 111111, 'run-diag')).toBe(true);
+    expect(goHeldFor(held, '111111', 'run-go')).toBe(false);
+    expect(goHeldFor(held, '222222', 'run-diag')).toBe(false);
+    expect(goHeldFor(held, '111111', null)).toBe(false);
+  });
   test('deliveringNote : demandée, puis en cours depuis le début du run de livraison', () => {
     const t0 = 1_000_000_000_000;
     expect(fns.deliveringNote('pr-awaiting-approval', t0, null, t0)).toBeNull();
