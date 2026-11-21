@@ -3150,7 +3150,9 @@ function renderNew() {
   const cancel = el('button', null, draft ? T('Fermer', 'Close') : T('Annuler', 'Cancel')); cancel.onclick = () => closeNew();
   const acts = el('div', 'actions'); acts.append(go, save, cancel);
   if (draft) { const del = el('button', 'danger', T('Supprimer le brouillon', 'Delete the draft')); del.onclick = () => deleteDraft(); acts.append(del); }
-  f.append(el('label', null, T('Dossier', 'Folder')), cwd, el('label', null, T('Premier message', 'First message')), pr,
+  f.append(el('label', null, T('Dossier', 'Folder')), cwd,
+           el('div', 'hint', T('Dossiers où une session a tourné récemment, plus ceux déclarés (★) dans newSession.folders de ~/.claude/sessions-desk/config.json — un dossier absent s’y ajoute.', 'Folders where a session ran recently, plus those declared (★) in newSession.folders of ~/.claude/sessions-desk/config.json — add a missing folder there.')),
+           el('label', null, T('Premier message', 'First message')), pr,
            el('div', 'hint', T('Envoyé tel quel à la session dès son démarrage. Vide : la session attend ta première demande.', 'Sent as is to the session as soon as it starts. Empty: the session waits for your first request.')),
            el('label', null, T('Pièces jointes', 'Attachments')), attachBar('new'),
            el('label', null, 'Tags'), tbox, tdl,
@@ -3163,7 +3165,12 @@ function renderNew() {
   fetch('/api/folders', { cache:'no-store' }).then(r => r.json()).then(r => {
     if (!newMode || !$('nf-cwd')) return;
     cwd.replaceChildren(); const last = localStorage.getItem('cc.newcwd');
-    for (const d of r.folders || []) { const o = el('option', null, (short(d.path) || d.path) + T('   —   il y a ' + ago(Date.now() - d.last), '   —   ' + ago(Date.now() - d.last) + ' ago') + ' · ' + d.count + ' session' + (d.count > 1 ? 's' : '')); o.value = d.path; o.title = d.path; cwd.append(o); }
+    // Dossier déclaré (newSession.folders de config.json) sans session récente : ni date ni compte, juste « déclaré ».
+    for (const d of r.folders || []) {
+      const info = d.count ? T('   —   il y a ' + ago(Date.now() - d.last), '   —   ' + ago(Date.now() - d.last) + ' ago') + ' · ' + d.count + ' session' + (d.count > 1 ? 's' : '') : '   —   ' + T('déclaré', 'declared');
+      const o = el('option', null, (d.declared ? '★ ' : '') + (short(d.path) || d.path) + info); o.value = d.path;
+      o.title = d.path + (d.declared ? T('\nDéclaré dans config.json (newSession.folders)', '\nDeclared in config.json (newSession.folders)') : ''); cwd.append(o);
+    }
     if (!cwd.options.length) { cwd.append(el('option', null, T('aucun dossier récent trouvé', 'no recent folder found'))); return; }
     const from = draft && draft.cwd ? draft.cwd : fork && fork.cwd ? fork.cwd : '';
     const want = from ? from.replace(/\\+$/, '').toLowerCase() : null, same = want && [...cwd.options].find(o => o.value.toLowerCase() === want);

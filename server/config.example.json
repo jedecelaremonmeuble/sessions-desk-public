@@ -63,6 +63,11 @@
     ]
   },
   "claudeArgs": "",
+  "newSession": {
+    "folders": [
+      "~\\code\\my-repo"
+    ]
+  },
   "tagger": {
     "domains": [
       "Billing",
