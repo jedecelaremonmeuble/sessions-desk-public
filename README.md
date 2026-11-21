@@ -96,6 +96,7 @@ or the `SD_CONFIG` environment variable). The file is optional. A template is in
 | `ui.quota` | Weekly quota thresholds in %: `{ "warn": 75, "alert": 90 }` (orange, then red + launcher alert) |
 | `ui.shortcuts` | Buttons under the reply box that send a ready-made slash command in one click: `[{ "label": "Reconnect MCP", "command": "/mcp reconnect all", "confirm": "" }]`, 8 at most. Absent: two defaults (reconnect MCP servers, compact). Empty list: no button |
 | `delays` | `{ "notifyAfterSeconds": 15, "notifyDoneAfterMinutes": 3, "closedDays": 14 }` — the command-line options of the same role win |
+| `newSession.folders` | Folders always offered by the new-session form, even with no recent session there: `["~\\code\\my-repo"]`, 50 at most. Without it the form only offers folders where a session ran recently — and only offered folders can be launched in |
 | `tailscaleExe` | Path to `tailscale.exe` (`""` turns remote access off); default: the standard install folder |
 | `peers` | Your other machines whose sessions join this list: `["laptop"]` — see [Several machines](#several-machines) |
 | `ui.language` | `en` or `fr`: the page language on this machine (default: the browser's) |

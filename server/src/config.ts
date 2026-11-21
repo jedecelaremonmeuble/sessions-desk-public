@@ -39,6 +39,8 @@ export interface Config {
   ui: UiConfig;
   /** Vocabulaire des tags, à défaut de celui que publie l'étiqueteur (modules.ts, parseTagVocab). */
   tagVocab: TagVocab;
+  /** Dossiers toujours proposés (et acceptés) par « Nouvelle session » — `newSession.folders` de config.json. */
+  newFolders: string[];
   /** Autres postes dont les sessions s'ajoutent à la liste (peers.ts) ; vide : aucun. */
   peers: string[];
   /** config.json illisible : le message (affiché par la page). */
@@ -90,6 +92,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
     modules: settings.modules,
     ui: settings.ui,
     tagVocab: settings.tagVocab,
+    newFolders: settings.newFolders,
     peers: settings.peers,
     configError: settings.error,
     configFile,

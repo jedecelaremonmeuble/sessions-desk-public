@@ -21,7 +21,8 @@
 //     "ui": { "pathPrefix": "C:\\code\\mon-depot", "prUrl": "https://github.com/moi/depot/pull/", "ticketUrl": "https://tickets.example.com/t/", "ticketLabel": "Ticket" },
 //     "claudeArgs": "--model opus",
 //     "delays": { "notifyAfterSeconds": 15, "notifyDoneAfterMinutes": 3, "closedDays": 14 },
-//     "tailscaleExe": "C:\\Program Files\\Tailscale\\tailscale.exe"
+//     "tailscaleExe": "C:\\Program Files\\Tailscale\\tailscale.exe",
+//     "newSession": { "folders": ["C:\\code\\mon-depot", "~\\outils"] }
 //   }
 //
 // - ui.quota : { "warn": 75, "alert": 90 } — seuils (en %) du quota hebdomadaire : orange, puis rouge + alerte.
@@ -30,6 +31,8 @@
 // - tailscaleExe : chemin de tailscale.exe ("" : pas d'accès distant). L'option --tailscale passe avant.
 // - peers : ["autre-poste"] — noms, sur le tailnet, de tes autres postes qui font tourner ce serveur : leurs sessions
 //   s'ajoutent à la liste de celui-ci (peers.ts). Absente : rien ne change.
+// - newSession.folders : dossiers TOUJOURS proposés par le formulaire « Nouvelle session », même sans session récente
+//   (sinon seuls ceux où une session a tourné le sont). Seuls ces dossiers-là s'ajoutent à ce que le serveur accepte.
 //
 // - ui.models : coût relatif de chaque modèle, pour que la page dise d'un coup d'œil qu'une session coûte plus cher.
 //   `match` = morceau de l'identifiant du modèle (« fable », « claude-opus-5-5 » ; la première entrée qui correspond
@@ -219,6 +222,20 @@ export function parseTailscale(raw: unknown, env: PathEnv): string | undefined {
   return absPath(v, env) || undefined;
 }
 
+/** Clé `newSession.folders` : dossiers déclarés du formulaire « Nouvelle session ». Chemins absolus seulement (`~`,
+ *  %USERPROFILE%… développés), sans « ; » ni « " » (ils couperaient la ligne de commande de Windows Terminal),
+ *  50 au plus, doublons retirés (casse ignorée) ; une entrée invalide est ignorée sans éteindre les autres. */
+export function parseNewSessionFolders(raw: unknown, env: PathEnv): string[] {
+  const v = obj(obj(raw)?.newSession)?.folders; if (!Array.isArray(v)) return [];
+  const out: string[] = [], seen = new Set<string>();
+  for (const x of v.slice(0, 50)) {
+    let p = absPath(x, env); if (!p || /[;"\r\n]/.test(p)) continue;
+    if (p.length > 3) p = p.replace(/[\\/]+$/, '');
+    const k = p.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(p); }
+  }
+  return out;
+}
+
 /** Options passées à `claude` au lancement d'une session : une ligne de 200 caractères au plus, sans « ; » (qui
  *  couperait la ligne de commande de Windows Terminal). Autre chose ⇒ null. */
 export function claudeArgsOk(v: unknown): string | null {
@@ -239,18 +256,20 @@ export function parseTagVocab(raw: unknown): TagVocab {
 }
 
 export interface Settings { modules: Modules; ui: UiConfig; claudeArgs: string; delays: Delays; tailscaleExe?: string; tagVocab: TagVocab;
+  /** Dossiers déclarés du formulaire « Nouvelle session » (parseNewSessionFolders). */
+  newFolders: string[];
   /** Autres postes du même propriétaire dont les sessions s'affichent ici (peers.ts). */
   peers: string[];
   /** Fichier présent mais illisible (JSON invalide) : le message, avec la position. null : lu, ou absent. */
   error: string | null }
 export function loadSettings(file: string, env: PathEnv): Settings {
-  const none = (error: string | null): Settings => ({ modules: { ...NO_MODULES }, ui: { ...NO_UI }, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, peers: [], error });
+  const none = (error: string | null): Settings => ({ modules: { ...NO_MODULES }, ui: { ...NO_UI }, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, newFolders: [], peers: [], error });
   let text: string;
   try { text = readFileSync(file, 'utf8'); } catch { return none(null); }   // absent : rien d'allumé, ce n'est pas une erreur
   let raw: unknown;
   // Illisible : tout reste éteint, mais on le DIT (un seul fichier porte tous les modules : une virgule de trop les éteint tous).
   try { raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); } catch (e) { return none(`${file} : ${(e as Error).message}`); }
   const ts = parseTailscale(raw, env);
-  return { modules: parseModules(raw, env), ui: parseUi(raw, env), claudeArgs: parseClaudeArgs(raw), delays: parseDelays(raw), tagVocab: parseTagVocab(raw), peers: parsePeers(raw), error: null, ...(ts !== undefined ? { tailscaleExe: ts } : {}) };
+  return { modules: parseModules(raw, env), ui: parseUi(raw, env), claudeArgs: parseClaudeArgs(raw), delays: parseDelays(raw), tagVocab: parseTagVocab(raw), newFolders: parseNewSessionFolders(raw, env), peers: parsePeers(raw), error: null, ...(ts !== undefined ? { tailscaleExe: ts } : {}) };
 }
 export const loadModules = (file: string, env: PathEnv): Modules => loadSettings(file, env).modules;
