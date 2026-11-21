@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, expect, test } from 'vitest';
-import { setPhase, startStallWatch, startupLine, stallVerdict } from '../src/stall.ts';
+import { opTarget, setPhase, startStallWatch, startupLine, stallVerdict, tracked } from '../src/stall.ts';
 import { sleep } from './parity/harness.ts';
 
 const REPO = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -50,6 +50,51 @@ test('gel par CALCUL puis gel par ATTENTE : vus du fil de travail, avec la phase
   // La fenêtre de mesure du CPU couvre TOUT le gel : un repère pris pendant le gel la raccourcirait.
   for (const m of log.matchAll(/débloquée après (\d+) ms .* sur (\d+) ms/g)) expect(Number(m[2])).toBeGreaterThanOrEqual(Number(m[1]) * 0.9);
 }, 20000);
+
+test('gel dans un appel synchrone suivi : le gel désigne l\'appel et son fichier ; hors appel, il le dit', async () => {
+  const f = join(dir, 'c.perf.log');
+  const w = startStallWatch(f, { thresholdMs: 500, everyMs: 100, beatMs: 50, slowOpMs: 300 });
+  const lire = tracked('readFileSync', (_p: string, ms: number): string => { asleep(ms); return 'lu'; });
+  try {
+    await sleep(300);
+    setPhase('état'); expect(lire('C:\\données\\gros.jsonl', 1500)).toBe('lu');
+    await until(() => /débloquée.*phase état/.test(read(f)));
+    setPhase('index'); asleep(1500);
+    await until(() => /débloquée.*phase index/.test(read(f)));
+    lire('C:\\données\\petit.json', 5);        // rapide : aucune ligne
+  } finally { await w.stop(); }
+  const log = read(f);
+  expect(log).toMatch(/boucle figée depuis \d+ ms \(phase état\) ; appel en cours depuis \d+ ms : readFileSync C:\\données\\gros\.jsonl/);
+  expect(log).toMatch(/débloquée après \d+ ms \(phase état\) : .* ; au début du gel : appel en cours depuis \d+ ms : readFileSync C:\\données\\gros\.jsonl/);
+  expect(log).toMatch(/appel lent : readFileSync C:\\données\\gros\.jsonl : \d{4} ms/);
+  expect(log).toMatch(/boucle figée depuis \d+ ms \(phase index\) ; aucun appel synchrone suivi en cours/);
+  expect(log).not.toMatch(/petit\.json/);
+}, 20000);
+
+test('cible d\'un appel : la fin d\'un chemin long, le fichier d\'un descripteur ouvert, le début d\'une commande', () => {
+  expect(opTarget('C:\\a\\' + 'x'.repeat(300) + '\\fin.jsonl')).toMatch(/^….{90}\\fin\.jsonl$/);
+  expect(opTarget(987654)).toBe('descripteur 987654');
+  expect(opTarget(undefined)).toBe('');
+  const ouvrir = tracked('openSync', (_p: string): number => 987654), fermer = tracked('closeSync', (_fd: number): void => undefined);
+  ouvrir('C:\\a\\b.txt'); expect(opTarget(987654)).toBe('C:\\a\\b.txt');
+  fermer(987654); expect(opTarget(987654)).toBe('descripteur 987654');
+});
+
+test('traceSyncOps : les imports nommés de node:fs et node:child_process des autres modules sont suivis', async () => {
+  const f = join(dir, 'd.perf.log'); const cible = join(dir, 'cible.txt');
+  const src = `import { readFileSync, writeFileSync } from 'node:fs'; import { execFileSync } from 'node:child_process';
+    import { startStallWatch, traceSyncOps } from ${JSON.stringify(new URL('../src/stall.ts', import.meta.url).href)};
+    const w = startStallWatch(${JSON.stringify(f)}, { slowOpMs: 0 }); traceSyncOps(); traceSyncOps();
+    writeFileSync(${JSON.stringify(cible)}, 'x'); if (readFileSync(${JSON.stringify(cible)}, 'utf8') !== 'x') process.exit(3);
+    execFileSync(process.execPath, ['-e', '0']); await w.stop();`;
+  const code = await new Promise<number | null>((ok) => { spawn(process.execPath, ['--input-type=module', '-e', src], { windowsHide: true, stdio: 'ignore' }).on('exit', ok); });
+  expect(code).toBe(0);
+  const log = read(f);
+  expect(log.split(cible).length - 1).toBe(2);          // une ligne par appel, pas deux (appel suivi une seule fois)
+  expect(log).toContain(`appel lent : writeFileSync ${cible} : `);
+  expect(log).toContain(`appel lent : readFileSync ${cible} : `);
+  expect(log).toMatch(/appel lent : execFileSync .*node(\.exe)? -e 0 : \d+ ms/);
+}, 30000);
 
 test('boucle libre : aucune ligne', async () => {
   const f = join(dir, 'b.perf.log');

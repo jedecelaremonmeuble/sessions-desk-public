@@ -293,7 +293,9 @@ The server keeps its own performance trace in `%TEMP%\sessions-desk-node-<port>.
 5 s), and one line per event-loop stall longer than 2 s. Stalls are spotted from a worker thread, so a stall that
 never ends is still logged. Each stall gives the phase the server was in and the CPU it used meanwhile: CPU close to
 the stall's length means our code was computing; CPU close to zero means the process was waiting (disk,
-antivirus, overloaded machine), not running our code.
+antivirus, overloaded machine), not running our code. A stall also names the synchronous call that was running when
+it began (a file being read, a program being started), or says that none was; a synchronous call that takes more
+than 500 ms has its own line (`appel lent`), even when it stays under the stall threshold.
 
 ## Keyboard shortcuts
 
