@@ -2577,15 +2577,7 @@ async function closeSession(it) {
   try {
     let r = await post('/api/close?pid=' + it.pid);
     if (r.needForce && r.jobs) {
-      if (!confirm(T(r.error + '.
-
-' + schedList(it) + '
-
-Fermer quand même ? Elle ne s’exécutera pas.', r.error + '.
-
-' + schedList(it) + '
-
-Close anyway? It will not run.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
+      if (!confirm(T(r.error + '.\n\n' + schedList(it) + '\n\nFermer quand même ? Elle ne s’exécutera pas.', r.error + '.\n\n' + schedList(it) + '\n\nClose anyway? It will not run.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
       r = await post('/api/close?pid=' + it.pid + '&force=1');
     } else if (r.needForce) {
       if (!confirm(T(r.error + '.\n\nL’arrêter de force ? Le travail en cours dans ce tour sera perdu ; la conversation reste reprenable.', r.error + '.\n\nForce it to stop? The work in progress in this turn will be lost; the conversation stays reopenable.'))) { say(T('fermeture annulée', 'close cancelled')); return; }
