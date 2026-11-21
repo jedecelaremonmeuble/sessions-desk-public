@@ -63,6 +63,7 @@
     ]
   },
   "claudeArgs": "",
+  "peers": [],
   "newSession": {
     "folders": [
       "~\\code\\my-repo"

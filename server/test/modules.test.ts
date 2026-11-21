@@ -56,7 +56,7 @@ describe('réglages d\'affichage du poste (ui)', () => {
   test('absents ou mal décrits : rien n\'est affiché de plus', () => {
     expect(parseUi({}, env)).toEqual(NO_UI);
     expect(parseUi({ ui: { pathPrefix: 'relatif', prUrl: 'javascript:alert(1)', ticketUrl: 'ftp://x', ticketLabel: 3 } }, env)).toEqual(NO_UI);
-    expect(loadSettings(join(dir, 'absent.json'), env)).toEqual({ modules: NO_MODULES, ui: NO_UI, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, newFolders: [], error: null });
+    expect(loadSettings(join(dir, 'absent.json'), env)).toEqual({ modules: NO_MODULES, ui: NO_UI, claudeArgs: '', delays: {}, tagVocab: { domaines: [], outils: [] }, newFolders: [], peers: [], error: null });
   });
   test('seules des adresses http(s) et un chemin absolu sont gardés', () => {
     expect(parseUi({ ui: { pathPrefix: '%USERPROFILE%\\code', prUrl: 'https://github.com/o/r/pull/', ticketUrl: 'http://tickets.example.com/t/', ticketLabel: '  Ticket  ' } }, env))

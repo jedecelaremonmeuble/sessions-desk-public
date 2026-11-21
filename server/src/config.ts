@@ -41,6 +41,8 @@ export interface Config {
   tagVocab: TagVocab;
   /** Dossiers toujours proposés (et acceptés) par « Nouvelle session » — `newSession.folders` de config.json. */
   newFolders: string[];
+  /** Autres postes dont les sessions s'ajoutent à la liste (peers.ts) ; vide : aucun. */
+  peers: string[];
   /** config.json illisible : le message (affiché par la page). */
   configError: string | null;
   /** Chemin du fichier de configuration lu (passé au surveillant Teams lancé par le serveur : SD_CONFIG). */
@@ -91,6 +93,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
     ui: settings.ui,
     tagVocab: settings.tagVocab,
     newFolders: settings.newFolders,
+    peers: settings.peers,
     configError: settings.error,
     configFile,
   };

@@ -7,6 +7,7 @@
 // En plus du .ps1 : --allow-write absent ⇒ toute action est refusée (serveur À CÔTÉ en lecture seule).
 import { langOf, T, withLang } from './i18n.ts';
 import { UsageProbe } from './usage-probe.ts';
+import { PEER_GET, PEER_HEADER, PEER_POST, Peers, peerRoute } from './peers.ts';
 import { relayHealth, tailscaleIdentity, tailscaleServePort, type RelayHealth } from './relay.ts';
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { createServer as createTcpServer, connect, type Server as TcpServer, type Socket } from 'node:net';
@@ -136,6 +137,8 @@ export class Server {
   readonly watch: Watch;
   /** Sonde d'usage (module quota, source usage-probe) : serveur principal, tâches de fond permises. */
   readonly usageProbe: UsageProbe | null;
+  /** Autres postes du propriétaire (peers.ts) : serveur principal seulement. */
+  readonly peers: Peers;
   remoteOwner: string | null = null;
   remoteOrigin: string | null = null;
   /** Santé du relais d'accès distant (relay.ts) : faits relevés ici, verdict dans l'état (`server.relay`). */
@@ -168,6 +171,7 @@ export class Server {
     this.launcher = new Launcher(d); this.automations = new Automations(d); this.search = new Search(d); this.actions = new Actions(d); this.watch = new Watch(d, this.launcher, this.automations);
     this.usageProbe = this.cfg.modules.quota?.probe && this.cfg.primary && !this.cfg.noBackground ? new UsageProbe(this.cfg) : null;
     this.uploadDir = join(this.cfg.claude, `uploads${this.cfg.suffix}`);
+    this.peers = new Peers(this.cfg.primary ? this.cfg.peers : [], () => this.remoteOrigin);
   }
 
   beat(): void { this.#beat = nowMs(); }
@@ -321,12 +325,14 @@ export class Server {
     // À DISTANCE : le propriétaire du poste seulement, en lecture comme en écriture — un autre membre du tailnet ne lit rien.
     if (remote) {
       if (!owner) { req.resume(); json(res, 403, { error: T('accès distant réservé au propriétaire du poste', 'remote access is reserved for the owner of this machine') }); return; }
-      const readOk = method === 'GET' && REMOTE_OK.has(path);
+      const readOk = method === 'GET' && (REMOTE_OK.has(path) || PEER_GET.has(peerRoute(path)?.op ?? ''));
       const writeOk = method === 'POST' && path.startsWith('/api/') && !REMOTE_NEVER.has(path) && this.remoteOrigin !== null && origin === this.remoteOrigin;
       if (!readOk && !writeOk) { req.resume(); json(res, 403, { error: T('action refusée à distance', 'action refused remotely') }); return; }
     }
     // Corps plafonné (hors pièce jointe, qui a sa propre limite) : longueur annoncée au-delà de 1 Mo ⇒ refus sans lire.
     if (method === 'POST' && path !== '/api/upload' && Number(header(req, 'content-length') ?? 0) > MAX_BODY) { tooBig(req, res); return; }
+    const peer = peerRoute(path);
+    if (peer) { await this.#peer(req, res, peer, method, origin, remote, url); return; }
     if (path === '/api/hook') {
       if (method === 'POST' && origin === undefined) { await this.#hook(req, res); } else { req.resume(); json(res, 403, '{}'); }
       return;
@@ -352,7 +358,7 @@ export class Server {
           if (age > STALE_AFTER_SECONDS) json(res, 503, { ok: false, stale: age }); else json(res, 200, { ok: true });
           return;
         }
-        case '/api/state': { const b = await this.#wait(() => this.#state, 20); if (b) { reply(res, 200, JSON_TYPE, b); return; } break; }
+        case '/api/state': { if (header(req, PEER_HEADER) === undefined) this.peers.touch(nowMs()); const b = await this.#wait(() => this.#state, 20); if (b) { reply(res, 200, JSON_TYPE, b); return; } break; }
         case '/api/closed': { const b = await this.#wait(() => this.#closed, 30); if (b) { reply(res, 200, JSON_TYPE, b); return; } break; }
         case '/api/transcript': this.#transcript(url, res); return;
         case '/api/image': {
@@ -379,6 +385,30 @@ export class Server {
     }
     this.#queue.push({ req, res, path, query: url.searchParams });
     this.#wake?.();
+  }
+
+  /** `/api/peer/<poste>/<route>` : relais vers un autre poste du propriétaire (peers.ts). Liste fermée de routes ;
+   *  jamais pour une demande venue elle-même d'un serveur ; écriture aux mêmes conditions qu'une action d'ici. Traité
+   *  hors de la boucle : un poste lent ne retarde ni l'état ni les actions locales. */
+  async #peer(req: IncomingMessage, res: ServerResponse, peer: { name: string; op: string }, method: string, origin: string | undefined, remote: boolean, url: URL): Promise<void> {
+    const get = method === 'GET' && PEER_GET.has(peer.op), post = method === 'POST' && PEER_POST.has(peer.op);
+    if (header(req, PEER_HEADER) !== undefined) { req.resume(); json(res, 403, { error: T('un relais ne se relaie pas', 'a relayed request is not relayed again') }); return; }
+    if (!this.peers.has(peer.name) || (!get && !post)) { req.resume(); json(res, 404, '{}'); return; }
+    const fromPage = get ? origin === undefined || origin === this.cfg.origin
+      : origin === this.cfg.origin || (remote && this.remoteOrigin !== null && origin === this.remoteOrigin);
+    if (!fromPage) { req.resume(); reply(res, 403, null, ''); return; }
+    if (post && !this.cfg.allowWrite) { req.resume(); json(res, 403, { error: T('serveur à côté en lecture seule (--allow-write pour écrire)', 'read-only side server (--allow-write to write)') }); return; }
+    const raw = post ? await readBody(req) : '';
+    if (raw === null) { tooBig(req, res); return; }
+    req.resume();
+    const r = await this.peers.forward(peer.name, peer.op, post ? 'POST' : 'GET', url.searchParams.toString(), raw, header(req, 'x-sd-lang'));
+    if (peer.op === 'image') res.setHeader('X-Content-Type-Options', 'nosniff');
+    reply(res, r.status, r.type, r.body);
+  }
+  /** Ce que le serveur ajoute à l'état calculé : son démarrage, la page servie, le relais, et les autres postes. */
+  #stateJson(st: object, now: number): string {
+    return JSON.stringify({ ...st, server: { boot: BOOT, page: this.#pageVersion(), relay: this.cfg.primary ? this.relayHealth() : null },
+      ...(this.peers.enabled ? { peers: this.peers.view(now) } : {}) });
   }
 
   /** Empreinte des fichiers de la page (date + taille) : la page ouverte la compare à la sienne et se recharge, après
@@ -430,7 +460,8 @@ export class Server {
         try {
           setPhase('état');
           const st = await this.d.state();
-          this.#state = Buffer.from(JSON.stringify({ ...st, server: { boot: BOOT, page: this.#pageVersion(), relay: this.cfg.primary ? this.relayHealth() : null } })); this.beat();
+          void this.peers.tick(now);
+          this.#state = Buffer.from(this.#stateJson(st, now)); this.beat();
           this.#firstState();
           if (!this.cfg.noBackground && now - lastWatch >= 2000) {
             lastWatch = now; setPhase('veille');
@@ -509,7 +540,7 @@ export class Server {
       if (headless) { status = 409; body = JSON.stringify({ code: 4, error: T('automate sans terminal (claude -p) : il se pilote depuis son lanceur', 'automation without a terminal (claude -p): drive it from its launcher') }); }
       else if ((!this.launcher.enabled && LAUNCHER_ROUTES.has(path)) || (!this.cfg.modules.teams && TEAMS_ROUTES.has(path)) || (!this.automations.enabled && AUTOMATION_ROUTES.has(path))) { req.resume(); status = 404; body = '{}'; }
       else switch (path) {
-        case '/api/state': body = JSON.stringify({ ...(await this.d.state()), server: { boot: BOOT, page: this.#pageVersion(), relay: this.cfg.primary ? this.relayHealth() : null } }); break;
+        case '/api/state': body = this.#stateJson(await this.d.state(), nowMs()); break;
         case '/api/closed': body = JSON.stringify(await this.d.closed()); break;
         case '/api/focus':
           if (knownPid) body = JSON.stringify({ code: await this.actions.focus(target) }); else { status = 400; body = '{}'; }
