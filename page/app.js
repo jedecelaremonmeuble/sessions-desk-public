@@ -1158,7 +1158,7 @@ function pickRun(it) {
   const dir = runPick.get(it.key), sub = dir && it.runs.find(r => r.run.dir === dir);
   return sub && sub.run.dir !== it.run.dir ? { ...sub, key: it.key, runs: it.runs, runCount: it.runCount, phases: it.phases, costTotal: it.costTotal, picked: true } : it;
 }
-let runData = null, runTimer = null, runsRead = false;   // runsRead : 1re lecture faite (une adresse ?sel=hd:… attend jusque-là)
+let runData = null, runTimer = null, runsRead = false, heldRun = null;   // runsRead : 1re lecture faite (une adresse ?sel=hd:… attend jusque-là)
 const midnight = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 // Module « launcher » éteint (le serveur le dit dans data.modules ; le .ps1 ne dit rien : il l'a toujours).
 const launcherOff = () => !!(data && data.modules && !data.modules.launcher);
@@ -1184,8 +1184,24 @@ const runGroup = () => {
   const g = launcherGroup(runs, waiting, open, midnight());
   // Une carte qui attend garde sa demande dans la liste, même si son dernier run date d'avant minuit.
   const old = cardRuns(runs, cards, midnight()), g2 = old.length ? launcherGroup(old, waiting, open, 0) : { items: [] };
-  return { items: withCards(runsByHd(g.items.concat(g2.items)), cards), absorbed: g.absorbed };
+  const k = keepSelectedRun(withCards(runsByHd(g.items.concat(g2.items)), cards), heldRun, selected);
+  heldRun = k.held;
+  return { items: k.items, absorbed: g.absorbed };
 };
+// La demande OUVERTE dans le détail ne quitte pas la liste sous l'utilisateur. Une demande dont le dernier run date
+// d'avant minuit n'y tient que par sa carte : la carte répondue (ou le feu vert donné), elle en sortait, la sélection
+// tombait et la page revenait à la vue d'ensemble, le temps que le run suivant apparaisse. On garde la dernière copie
+// vue de la demande sélectionnée (sans ses cartes, déjà traitées) jusqu'à ce que le lanceur la renvoie ou qu'on en
+// sélectionne une autre. PURE (testée par server/test/page-cards.test.ts).
+function keepSelectedRun(items, held, sel) {
+  if (!sel || !String(sel).startsWith('hd:')) return { items, held: null };
+  const cur = items.find(i => i.key === sel);
+  if (cur) return { items, held: cur };
+  if (!held || held.key !== sel) return { items, held: null };
+  const { cards, ...rest } = held;
+  const kept = { ...rest, look: rest.run && rest.run.running ? rest.look : 'idle' };
+  return { items: items.concat(kept), held: kept };
+}
 const money = v => (Math.round(v * 100) / 100).toLocaleString(LOCALE) + ' $';
 // ── Passes des AUTOMATES du poste (module « automations ») : scripts planifiés déclarés dans la configuration du
 // poste. Un groupe par automate dans la liste (la passe en cours et la DERNIÈRE passe du jour qui a agi ou échoué), une carte
