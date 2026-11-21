@@ -1,4 +1,5 @@
 {
+  "$schema": "http://localhost:8765/config.schema.json",
   "modules": {
     "launcher": {
       "root": "%LOCALAPPDATA%\\my-orchestrator",

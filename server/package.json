@@ -10,7 +10,8 @@
     "demo": "node scripts/demo.ts",
     "build:driver": "dotnet build ../driver/SessionsDesk.Driver.csproj -c Release -o ../.build/driver",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check-config": "node scripts/check-config.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

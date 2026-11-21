@@ -123,7 +123,21 @@ function modelBadge(m, compact, extra) {
   return b;
 }
 // config.json illisible : tous les modules sont éteints — le dire en tête de la liste, avec la cause.
-function cfgErr(msg) { const e = $('cfgerr'); if (!e) return; e.hidden = !msg; if (msg) e.textContent = T('⚠ Fichier de configuration illisible : tout est éteint (lanceur, Teams, quota, tags). Corriger puis redémarrer le serveur. — ', '⚠ Configuration file unreadable: everything is off (launcher, Teams, quota, tags). Fix it, then restart the server. — ') + msg; }
+// config.json lu mais pas conforme au schéma : les réglages ignorés, repliés sous une ligne (une faute de frappe ne se voit pas autrement).
+function cfgErr(msg, warnings) {
+  const e = $('cfgerr'); if (!e) return;
+  const w = Array.isArray(warnings) ? warnings.filter(x => typeof x === 'string') : [];
+  const key = (msg || '') + '
+' + w.join('
+'); if (e.dataset.k === key) return; e.dataset.k = key;
+  e.hidden = !msg && !w.length; e.classList.toggle('warn', !msg && w.length > 0); e.textContent = '';
+  if (msg) { e.textContent = T('⚠ Fichier de configuration illisible : tout est éteint (lanceur, Teams, quota, tags). Corriger puis redémarrer le serveur. — ', '⚠ Configuration file unreadable: everything is off (launcher, Teams, quota, tags). Fix it, then restart the server. — ') + msg; return; }
+  if (!w.length) return;
+  const d = document.createElement('details'), s = document.createElement('summary'), ul = document.createElement('ul');
+  s.textContent = w.length === 1 ? T('⚠ config.json : 1 réglage ignoré', '⚠ config.json: 1 setting ignored') : T(`⚠ config.json : ${w.length} réglages ignorés`, `⚠ config.json: ${w.length} settings ignored`);
+  for (const x of w) { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); }
+  d.append(s, ul); e.appendChild(d);
+}
 const short = p => { const s = p || '', pre = ui().pathPrefix || ''; return (pre && s.toLowerCase().startsWith(pre.toLowerCase()) ? s.slice(pre.length).replace(/^[\\/]+/, '') : s) || s; };
 const norm = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 // Lien avec le serveur (voir tick) : déclaré tôt, post() et l'envoi le lisent.
@@ -4047,7 +4061,7 @@ async function tick() {
     ticking = false; return;
   }
   try {
-    data = srv; skew = data.now ? Date.now() - data.now : 0; adoptPostLanguage(data.ui && data.ui.language); cfgErr(data.configError); favs = new Set(data.favs || []); hiddenSet = new Set(data.hidden || []); $('launchbtn').hidden = launcherOff(); chatsBadge();
+    data = srv; skew = data.now ? Date.now() - data.now : 0; adoptPostLanguage(data.ui && data.ui.language); cfgErr(data.configError, data.configWarnings); favs = new Set(data.favs || []); hiddenSet = new Set(data.hidden || []); $('launchbtn').hidden = launcherOff(); chatsBadge();
     if (linkUp(data.server)) return;
     renderList(); renderDetail(); refreshScreen(); refreshConv(); try { renderQuota(); } catch (e) { console.log('[sessions] quota :', e); }
     renderRelay(data.server && data.server.relay);

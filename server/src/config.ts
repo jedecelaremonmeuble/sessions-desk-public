@@ -45,6 +45,8 @@ export interface Config {
   peers: string[];
   /** config.json illisible : le message (affiché par la page). */
   configError: string | null;
+  /** config.json lu mais pas conforme au schéma : une ligne par réglage ignoré (affiché par la page). */
+  configWarnings: string[];
   /** Chemin du fichier de configuration lu (passé au surveillant Teams lancé par le serveur : SD_CONFIG). */
   configFile: string;
 }
@@ -95,6 +97,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
     newFolders: settings.newFolders,
     peers: settings.peers,
     configError: settings.error,
+    configWarnings: settings.warnings,
     configFile,
   };
 }
