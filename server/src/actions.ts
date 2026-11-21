@@ -52,7 +52,7 @@ export interface ModelMenu { opts: { num: number; label: string }[]; cur: number
 export function parseModelMenu(screen: string): ModelMenu | null {
   const L = screen.split('\n');
   let foot = -1;
-  for (let i = L.length - 1; i >= Math.max(0, L.length - 12); i--) if (/enter to (save|select|confirm)/i.test(L[i]!) && /esc to cancel/i.test(L[i]!)) { foot = i; break; }
+  for (let i = L.length - 1; i >= Math.max(0, L.length - 12); i--) if (/\benter to (save|select|confirm|set)\b/i.test(L[i]!) && /esc to cancel/i.test(L[i]!)) { foot = i; break; }
   if (foot < 0) return null;
   const opts: ModelMenu['opts'] = []; let cur = -1;
   for (let i = Math.max(0, foot - 30); i < foot; i++) {
